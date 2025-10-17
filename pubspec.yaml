@@ -1,0 +1,47 @@
+name: powerlink_crm
+description: "A new Flutter project."
+publish_to: 'none' 
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.9.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Standard iOS-style icons.
+  cupertino_icons: ^1.0.8
+  
+  # For potential voice-to-text input functionality in the future.
+  speech_to_text: ^7.3.0
+  
+  # For making HTTP requests to a REST API (like the Laravel backend).
+  http: ^1.5.0
+  
+  # For loading environment variables from the .env file (e.g., API keys).
+  flutter_dotenv: ^6.0.0
+  
+  # For simple, persistent key-value storage (e.g., user preferences).
+  shared_preferences: ^2.5.3
+  
+  # The official Flutter client for Supabase (handles auth and database access).
+  supabase_flutter: ^2.5.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  # Recommended linter rules for Flutter projects to enforce good code style.
+  flutter_lints: ^5.0.0
+
+flutter:
+
+  # This line ensures that you can use the Material Design icons and components.
+  uses-material-design: true
+
+  # Defines the asset files (like images or config files) available to the app.
+  assets:
+    - .env
+    - assets/images/
