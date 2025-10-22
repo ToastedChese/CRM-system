@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
-import 'service_request.dart'; // Make sure this exists
+import 'package:powerlink_crm/screens/customer_messages_screen.dart';
+import 'package:powerlink_crm/screens/customer_profile_screen.dart';
+import 'package:powerlink_crm/screens/customer_support_screen.dart';
 
 class CustomerDashboard extends StatefulWidget {
   const CustomerDashboard({super.key});
@@ -10,13 +12,14 @@ class CustomerDashboard extends StatefulWidget {
 
 class _CustomerDashboardState extends State<CustomerDashboard> {
   int _selectedIndex = 0;
-  static const Color mainBlue = Color(0xFF2023E8);
+  // Use the same dark blue as the employee dashboard for consistency
+  static const Color mainBlue = Color(0xFF182D53);
 
   final List<Widget> _pages = const [
     _HomePage(),
-    _MessagesPlaceholder(),
-    ServiceRequestPage(),
-    _ProfilePlaceholder(),
+    CustomerMessagesScreen(),
+    CustomerSupportScreen(),
+    CustomerProfileScreen(),
   ];
 
   void _onItemTapped(int index) {
@@ -37,6 +40,7 @@ class _CustomerDashboardState extends State<CustomerDashboard> {
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
         centerTitle: true,
+        iconTheme: const IconThemeData(color: Colors.white), // Ensure back button is white
       ),
       body: _pages[_selectedIndex],
       bottomNavigationBar: BottomNavigationBar(
@@ -61,7 +65,8 @@ class _CustomerDashboardState extends State<CustomerDashboard> {
 class _HomePage extends StatelessWidget {
   const _HomePage();
 
-  static const Color mainBlue = Color(0xFF2023E8);
+  // Use the same dark blue as the employee dashboard for consistency
+  static const Color mainBlue = Color(0xFF182D53);
 
   @override
   Widget build(BuildContext context) {
@@ -137,7 +142,7 @@ class _HomePage extends StatelessWidget {
       children: [
         const CircleAvatar(
           radius: 30,
-          backgroundImage: AssetImage('assets/profile_placeholder.png'),
+          child: Icon(Icons.person, size: 30),
         ),
         const SizedBox(width: 12),
         Column(
@@ -177,30 +182,6 @@ class _HomePage extends StatelessWidget {
         trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
         onTap: () {},
       ),
-    );
-  }
-}
-
-// ------------------------ MESSAGES PLACEHOLDER ------------------------
-class _MessagesPlaceholder extends StatelessWidget {
-  const _MessagesPlaceholder();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Center(
-      child: Text('Messages tab will be implemented later.'),
-    );
-  }
-}
-
-// ------------------------ PROFILE PLACEHOLDER ------------------------
-class _ProfilePlaceholder extends StatelessWidget {
-  const _ProfilePlaceholder();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Center(
-      child: Text('Profile tab will be implemented later.'),
     );
   }
 }

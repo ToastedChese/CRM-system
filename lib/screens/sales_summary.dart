@@ -191,7 +191,7 @@ class SalesSummaryState extends State<SalesSummary> {
 																							Container(
 																								margin: const EdgeInsets.only( bottom: 8, left: 16, right: 59),
 																								child: Text(
-																									"\R45,678.90",
+																									"\$45,678.90",
 																									style: TextStyle(
 																										color: Color(0xFF000000),
 																										fontSize: 28,
@@ -246,7 +246,7 @@ class SalesSummaryState extends State<SalesSummary> {
 																							Container(
 																								margin: const EdgeInsets.only( bottom: 8, left: 16, right: 59),
 																								child: Text(
-																									"R2,405",
+																									"2,405",
 																									style: TextStyle(
 																										color: Color(0xFF000000),
 																										fontSize: 28,
@@ -335,7 +335,7 @@ class SalesSummaryState extends State<SalesSummary> {
 																										Container(
 																											margin: const EdgeInsets.only( bottom: 5, right: 277),
 																											child: Text(
-																												"\R50 000",
+																												"\$50K",
 																												style: TextStyle(
 																													color: Color(0xFF828282),
 																													fontSize: 10,

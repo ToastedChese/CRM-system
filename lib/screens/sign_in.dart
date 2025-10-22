@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:powerlink_crm/models/employee.dart';
 import 'package:powerlink_crm/services/authentication.dart';
 import 'forgotten_password_screen.dart';
+import 'employee_dashboard.dart';
+import 'customer_dashboard.dart';
+import 'manager_dashboard.dart'; // Import the new manager dashboard
 
 class SignIn extends StatefulWidget {
   const SignIn({super.key});
@@ -157,7 +160,7 @@ class SignInState extends State<SignIn> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const Text("Don\u2019t have an account?"),
+                          const Text("Don't have an account?"),
                           TextButton(
                             onPressed: () {
                               // Navigate to sign up screen using its named route.
@@ -178,6 +181,36 @@ class SignInState extends State<SignIn> {
                           );
                         },
                         child: const Text("Forgot Password"),
+                      ),
+                      // Temporary button to navigate to the employee dashboard
+                      ElevatedButton(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (context) => const EmployeeDashboard()),
+                          );
+                        },
+                        child: const Text("DEV: Go to Employee Dashboard"),
+                      ),
+                      // Temporary button to navigate to the customer dashboard
+                      ElevatedButton(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (context) => const CustomerDashboard()),
+                          );
+                        },
+                        child: const Text("DEV: Go to Customer Dashboard"),
+                      ),
+                      // Temporary button to navigate to the manager dashboard
+                      ElevatedButton(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (context) => const ManagerDashboard()),
+                          );
+                        },
+                        child: const Text("DEV: Go to Manager Dashboard"),
                       ),
                     ],
                   ),
