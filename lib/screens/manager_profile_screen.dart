@@ -18,7 +18,7 @@ class _ManagerProfileScreenState extends State<ManagerProfileScreen> {
   final _emailController = TextEditingController(text: 'manager@powerlink.com');
   final _phoneController = TextEditingController(text: '081-234-5678');
 
-  bool _isLoading = false;
+  final bool _isLoading = false;
   // File? _profileImage;
 
   @override

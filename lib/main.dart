@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart'; 
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
 import 'package:powerlink_crm/screens/add_customer_screen.dart';
 import 'package:powerlink_crm/screens/customer_dashboard.dart';
 import 'package:powerlink_crm/screens/dashboard_screen.dart';
@@ -11,11 +13,29 @@ import 'package:powerlink_crm/screens/splash_screen.dart';
 import 'package:powerlink_crm/screens/start_screen.dart';
 import 'package:powerlink_crm/screens/visits_screen.dart';
 import 'package:powerlink_crm/screens/welcome_screen.dart';
-import 'package:powerlink_crm/screens/manager_dashboard.dart'; // Import the new manager dashboard
+import 'package:powerlink_crm/screens/manager_dashboard.dart';
 
-void main() {
-  // Ensures that Flutter widgets are initialized before running the app.
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // ✅ Load .env
+  await dotenv.load(fileName: ".env");
+
+  // ✅ Initialize Supabase
+  await Supabase.initialize(
+    url: dotenv.env['SUPABASE_URL'] ?? '',
+    anonKey: dotenv.env['SUPABASE_ANON_KEY'] ?? '',
+  );
+
+  // ✅ Test connection
+  final client = Supabase.instance.client;
+  try {
+    await client.from('customers').select('id').limit(1);
+    print('✅ Supabase connected successfully.');
+  } catch (e) {
+    print('❌ Supabase connection failed: $e');
+  }
+
   runApp(const PowerLinkCRM());
 }
 
@@ -31,31 +51,18 @@ class PowerLinkCRM extends StatelessWidget {
         primarySwatch: Colors.blue,
         visualDensity: VisualDensity.adaptivePlatformDensity,
       ),
-      // The SplashScreen handles initialization and then navigates.
       home: const SplashScreen(),
-      // Define all the navigation routes for your app for clean navigation.
       routes: {
-        // The new start screen, which serves as the onboarding/welcome page.
         '/start': (context) => const StartScreen(),
-        // Public-facing screen with Login/Sign Up buttons.
         '/welcome': (context) => const WelcomeScreen(),
-        // The main sign-in screen for users.
         '/login': (context) => const SignIn(),
-        // The new placeholder screen for user registration.
         '/signup': (context) => const SignUp(),
-        // The main dashboard shown after a successful login.
         '/dashboard': (context) => const DashboardScreen(),
-        // Screen to view the list of all customers.
         '/customers': (context) => const CustomerDashboard(),
-        // Manager Dashboard
         '/managerDashboard': (context) => const ManagerDashboard(),
-        // Form to add a new customer to the database.
         '/addCustomer': (context) => const AddCustomerScreen(),
-        // Screen to view and manage scheduled visits.
         '/visits': (context) => const VisitsScreen(),
-        // In-app chat for help and support.
         '/helpChat': (context) => const HelpChatScreen(),
-        // Screen for user settings and profile information.
         '/settings': (context) => const SettingsScreen(),
       },
     );

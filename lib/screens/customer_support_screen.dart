@@ -12,7 +12,7 @@ class _CustomerSupportScreenState extends State<CustomerSupportScreen> {
   final _formKey = GlobalKey<FormState>();
   final _subjectController = TextEditingController();
   final _messageController = TextEditingController();
-  bool _isSubmitting = false;
+  final bool _isSubmitting = false;
 
   /*
   // --- Database Integration Placeholder ---

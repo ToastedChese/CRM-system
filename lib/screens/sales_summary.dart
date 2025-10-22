@@ -31,7 +31,7 @@ class SalesSummaryState extends State<SalesSummary> {
 														child: Row(
 															mainAxisAlignment: MainAxisAlignment.spaceBetween,
 															children: [
-																Container(
+																SizedBox(
 																	width: 24,
 																	height: 24,
 																	child: Image.network(
@@ -47,7 +47,7 @@ class SalesSummaryState extends State<SalesSummary> {
 																		fontWeight: FontWeight.bold,
 																	),
 																),
-																Container(
+																SizedBox(
 																	width: 24,
 																	height: 24,
 																	child: Image.network(
@@ -152,7 +152,7 @@ class SalesSummaryState extends State<SalesSummary> {
 													),
 												),
 												IntrinsicHeight(
-													child: Container(
+													child: SizedBox(
 														width: double.infinity,
 														child: SingleChildScrollView(
 															scrollDirection: Axis.horizontal,
@@ -509,7 +509,7 @@ class SalesSummaryState extends State<SalesSummary> {
 																					),
 																				),
 																				Expanded(
-																					child: Container(
+																					child: SizedBox(
 																						width: double.infinity,
 																						child: SizedBox(),
 																					),
@@ -690,7 +690,7 @@ class SalesSummaryState extends State<SalesSummary> {
 																						fit: BoxFit.fill,
 																					)
 																				),
-																				Container(
+																				SizedBox(
 																					width: 76,
 																					height: 49,
 																					child: Image.network(

@@ -1,7 +1,6 @@
-import 'package:flutter/foundation.dart';
-
 class Customer {
-  final int customerId;
+  final String customerId;
+  final String? userId; // <- nullable
   final String firstName;
   final String lastName;
   final String email;
@@ -12,6 +11,7 @@ class Customer {
 
   Customer({
     required this.customerId,
+    this.userId,
     required this.firstName,
     required this.lastName,
     required this.email,
@@ -21,22 +21,26 @@ class Customer {
     required this.dateCreated,
   });
 
-  factory Customer.fromJson(Map<String, dynamic> json) {
-    return Customer(
-      customerId: json['customer_id'] as int,
-      firstName: json['first_name'] as String,
-      lastName: json['last_name'] as String,
-      email: json['email'] as String,
-      phone: json['phone'] as String?,
-      address: json['address'] as String?,
-      customerType: json['customer_type'] as String?,
-      dateCreated: DateTime.parse(json['date_created'] as String),
-    );
-  }
+ factory Customer.fromJson(Map<String, dynamic> json) {
+  return Customer(
+    customerId: json['id']?.toString() ?? '',
+    userId: json['user_id']?.toString(),
+    firstName: json['first_name'] ?? '',
+    lastName: json['last_name'] ?? '',
+    email: json['email'] ?? '',
+    phone: json['phone'] as String?,
+    address: json['address'] as String?,
+    customerType: json['customer_type'] as String?,
+    dateCreated: json['date_created'] != null
+        ? DateTime.parse(json['date_created'])
+        : DateTime.now(),
+  );
+}
 
   Map<String, dynamic> toMap() {
     return {
       'customer_id': customerId,
+      'user_id': userId,
       'first_name': firstName,
       'last_name': lastName,
       'email': email,
@@ -45,27 +49,5 @@ class Customer {
       'customer_type': customerType,
       'date_created': dateCreated.toIso8601String(),
     };
-  }
-
-  Customer copyWith({
-    int? customerId,
-    String? firstName,
-    String? lastName,
-    String? email,
-    ValueGetter<String?>? phone,
-    ValueGetter<String?>? address,
-    ValueGetter<String?>? customerType,
-    DateTime? dateCreated,
-  }) {
-    return Customer(
-      customerId: customerId ?? this.customerId,
-      firstName: firstName ?? this.firstName,
-      lastName: lastName ?? this.lastName,
-      email: email ?? this.email,
-      phone: phone != null ? phone() : this.phone,
-      address: address != null ? address() : this.address,
-      customerType: customerType != null ? customerType() : this.customerType,
-      dateCreated: dateCreated ?? this.dateCreated,
-    );
   }
 }

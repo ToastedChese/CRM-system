@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:powerlink_crm/services/authentication.dart';
 import 'sign_in.dart';
 
 class SignUp extends StatefulWidget {
@@ -12,21 +13,79 @@ class SignUpState extends State<SignUp> {
   final TextEditingController emailController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
   final TextEditingController confirmController = TextEditingController();
+  final TextEditingController firstNameController = TextEditingController();
+  final TextEditingController lastNameController = TextEditingController();
+
+  final AuthService _authService = AuthService();
 
   bool _obscurePassword = true;
   bool _obscureConfirm = true;
+  bool _isLoading = false;
 
-  void signUp() {
-    if (emailController.text.isNotEmpty &&
-        passwordController.text.isNotEmpty &&
-        confirmController.text.isNotEmpty) {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (context) => const SignIn()),
-      );
-    } else {
+  Future<void> signUp() async {
+    final email = emailController.text.trim();
+    final password = passwordController.text.trim();
+    final confirm = confirmController.text.trim();
+    final firstName = firstNameController.text.trim();
+    final lastName = lastNameController.text.trim();
+
+    if (email.isEmpty ||
+        password.isEmpty ||
+        confirm.isEmpty ||
+        firstName.isEmpty ||
+        lastName.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Please fill in all fields")),
       );
+      return;
+    }
+
+    if (password != confirm) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Passwords do not match")),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      // 🔹 Test Supabase connection first
+      final connected = await _authService.testConnection();
+      if (!connected) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Failed to connect to Supabase")),
+        );
+        setState(() => _isLoading = false);
+        return;
+      }
+
+      // 🔹 Attempt to sign up
+      final user = await _authService.signUpCustomer(
+        firstName: firstName,
+        lastName: lastName,
+        email: email,
+        password: password,
+      );
+
+      if (user != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Account created successfully")),
+        );
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (context) => const SignIn()),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Sign up failed")),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error: $e")),
+      );
+    } finally {
+      setState(() => _isLoading = false);
     }
   }
 
@@ -53,6 +112,38 @@ class SignUpState extends State<SignUp> {
                 ),
               ),
               const SizedBox(height: 30),
+
+              // First name
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: TextField(
+                  controller: firstNameController,
+                  decoration: InputDecoration(
+                    prefixIcon: const Icon(Icons.person_outline),
+                    labelText: "First Name",
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(30),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // Last name
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: TextField(
+                  controller: lastNameController,
+                  decoration: InputDecoration(
+                    prefixIcon: const Icon(Icons.person_outline),
+                    labelText: "Last Name",
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(30),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
 
               // Email Field
               Padding(
@@ -125,18 +216,20 @@ class SignUpState extends State<SignUp> {
               const SizedBox(height: 30),
 
               ElevatedButton(
-                onPressed: signUp,
+                onPressed: _isLoading ? null : signUp,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF2C426A),
-                  padding:
-                  const EdgeInsets.symmetric(horizontal: 60, vertical: 14),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 60, vertical: 14),
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(30)),
                 ),
-                child: const Text(
-                  "Sign Up",
-                  style: TextStyle(fontSize: 18, color: Colors.white),
-                ),
+                child: _isLoading
+                    ? const CircularProgressIndicator(color: Colors.white)
+                    : const Text(
+                        "Sign Up",
+                        style: TextStyle(fontSize: 18, color: Colors.white),
+                      ),
               ),
               const SizedBox(height: 25),
 
