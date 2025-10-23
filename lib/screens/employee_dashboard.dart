@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'employee_profile.dart'; // Use consistent relative import
 import 'messages_employee.dart'; // Import the new messages screen
+import 'voice_ai_screen.dart'; // Import the new Voice AI screen
 
 class EmployeeDashboard extends StatefulWidget {
   const EmployeeDashboard({super.key});
@@ -35,7 +36,10 @@ class _EmployeeDashboardState extends State<EmployeeDashboard> {
         break;
       // Add navigation for other items here
       case 2: // Voice AI
-        print("Navigate to Voice AI screen");
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const VoiceAiScreen()),
+        );
         break;
       case 3: // Gamify
         print("Navigate to Gamify screen");

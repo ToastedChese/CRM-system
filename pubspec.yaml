@@ -32,6 +32,9 @@ dependencies:
   # For picking images from the device's gallery or camera.
   image_picker: ^1.0.4
 
+  # For Current voice-to-text input functionality
+  avatar_glow: ^3.0.1 # Or latest version
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
