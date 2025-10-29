@@ -31,7 +31,7 @@ class SalesSummaryState extends State<SalesSummary> {
 														child: Row(
 															mainAxisAlignment: MainAxisAlignment.spaceBetween,
 															children: [
-																Container(
+																SizedBox(
 																	width: 24,
 																	height: 24,
 																	child: Image.network(
@@ -47,7 +47,7 @@ class SalesSummaryState extends State<SalesSummary> {
 																		fontWeight: FontWeight.bold,
 																	),
 																),
-																Container(
+																SizedBox(
 																	width: 24,
 																	height: 24,
 																	child: Image.network(
@@ -152,7 +152,7 @@ class SalesSummaryState extends State<SalesSummary> {
 													),
 												),
 												IntrinsicHeight(
-													child: Container(
+													child: SizedBox(
 														width: double.infinity,
 														child: SingleChildScrollView(
 															scrollDirection: Axis.horizontal,
@@ -191,7 +191,7 @@ class SalesSummaryState extends State<SalesSummary> {
 																							Container(
 																								margin: const EdgeInsets.only( bottom: 8, left: 16, right: 59),
 																								child: Text(
-																									"\R45,678.90",
+																									"R45,678.90",
 																									style: TextStyle(
 																										color: Color(0xFF000000),
 																										fontSize: 28,
@@ -335,7 +335,7 @@ class SalesSummaryState extends State<SalesSummary> {
 																										Container(
 																											margin: const EdgeInsets.only( bottom: 5, right: 277),
 																											child: Text(
-																												"\R50 000",
+																												"R50 000",
 																												style: TextStyle(
 																													color: Color(0xFF828282),
 																													fontSize: 10,
@@ -509,7 +509,7 @@ class SalesSummaryState extends State<SalesSummary> {
 																					),
 																				),
 																				Expanded(
-																					child: Container(
+																					child: SizedBox(
 																						width: double.infinity,
 																						child: SizedBox(),
 																					),
@@ -690,7 +690,7 @@ class SalesSummaryState extends State<SalesSummary> {
 																						fit: BoxFit.fill,
 																					)
 																				),
-																				Container(
+																				SizedBox(
 																					width: 76,
 																					height: 49,
 																					child: Image.network(

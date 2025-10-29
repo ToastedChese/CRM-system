@@ -74,7 +74,7 @@ class _HomePageState extends State<_HomePage> {
       _customerStream = Supabase.instance.client
           .from('customers')
           .stream(primaryKey: ['id'])
-          .eq('email', _user!.email!)
+          .eq('email', _user.email!)
           .limit(1);
     }
   }

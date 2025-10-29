@@ -90,7 +90,7 @@ class CustomerSettingsScreen extends StatelessWidget {
       ),
       subtitle: Text(
         subtitle,
-        style: theme.textTheme.bodySmall?.copyWith(color: color != null ? color.withOpacity(0.8) : null),
+        style: theme.textTheme.bodySmall?.copyWith(color: color?.withOpacity(0.8)),
       ),
       onTap: onTap,
     );

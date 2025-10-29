@@ -5,7 +5,6 @@ import 'dart:ui' as ui;
 import 'package:crop_image/crop_image.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class CustomerProfileScreen extends StatefulWidget {
