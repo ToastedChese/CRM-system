@@ -13,6 +13,7 @@ class ForgottenPasswordState extends State<ForgottenPassword> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.white,
       appBar: AppBar(
         elevation: 0,
         backgroundColor: Colors.white,
@@ -22,100 +23,92 @@ class ForgottenPasswordState extends State<ForgottenPassword> {
         ),
       ),
       body: SafeArea(
-        child: Container(
-          color: Colors.white,
-          child: SingleChildScrollView(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SizedBox(height: 20),
-                  const Text(
-                    "Forgot Password",
-                    style: TextStyle(
-                      color: Color(0xFF182D53),
-                      fontSize: 30,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  const Text(
-                    "Select a contact method to reset your password.",
-                    style: TextStyle(
-                      color: Color(0xFF736A66),
-                      fontSize: 16,
-                    ),
-                  ),
-                  const SizedBox(height: 40),
-
-                  // Options
-                  _buildOptionCard(
-                    title: 'Via SMS',
-                    imagePath: 'assets/images/2FA.png',
-                    index: 0,
-                  ),
-                  _buildOptionCard(
-                    title: 'Via Email',
-                    imagePath: 'assets/images/password.png',
-                    index: 1,
-                  ),
-                  _buildOptionCard(
-                    title: 'Google Authenticator',
-                    imagePath: 'assets/images/googleauth.png',
-                    index: 2,
-                  ),
-
-                  const SizedBox(height: 40),
-
-                  // Continue Button
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: _selectedIndex != -1
-                          ? () {
-                              if (_selectedIndex == 0) {
-                                Navigator.of(context).push(
-                                  MaterialPageRoute(
-                                    builder: (context) =>
-                                        const PhoneVerificationScreen(),
-                                  ),
-                                );
-                              } else {
-                                // Placeholder for other options
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text(
-                                        'This option has not been implemented yet.'),
-                                    backgroundColor: Colors.redAccent,
-                                  ),
-                                );
-                              }
-                            }
-                          : null,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF3C7BED),
-                        disabledBackgroundColor: Colors.grey[400],
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24.0),
+          child: Column(
+            children: [
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SizedBox(height: 20),
+                      const Text(
+                        "Forgot Password",
+                        style: TextStyle(
+                          color: Color(0xFF182D53),
+                          fontSize: 30,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
-                      child: const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 16.0),
-                        child: Text(
-                          'Continue',
-                          style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white),
+                      const SizedBox(height: 12),
+                      const Text(
+                        "Select a contact method to reset your password.",
+                        style: TextStyle(
+                          color: Color(0xFF736A66),
+                          fontSize: 16,
                         ),
                       ),
-                    ),
+                      const SizedBox(height: 40),
+                      _buildOptionCard(
+                        title: 'Via SMS',
+                        imagePath: 'assets/images/2FA.png',
+                        index: 0,
+                      ),
+                      _buildOptionCard(
+                        title: 'Via Email',
+                        imagePath: 'assets/images/password.png',
+                        index: 1,
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 20),
-                ],
+                ),
               ),
-            ),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: _selectedIndex != -1
+                      ? () {
+                          if (_selectedIndex == 0) {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (context) =>
+                                    const PhoneVerificationScreen(),
+                              ),
+                            );
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                    'This option has not been implemented yet.'),
+                                backgroundColor: Colors.redAccent,
+                              ),
+                            );
+                          }
+                        }
+                      : null,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF3C7BED),
+                    disabledBackgroundColor: Colors.grey[400],
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 16.0),
+                    child: Text(
+                      'Continue',
+                      style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10), // Padding at the very bottom
+            ],
           ),
         ),
       ),
