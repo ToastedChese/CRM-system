@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:powerlink_crm/screens/voice_ai_screen.dart';
-import 'employee_profile.dart'; // Use consistent relative import
-import 'messages_employee.dart'; // Import the new messages screen
+import 'profile_screen.dart';
+import 'messages_employee.dart';
 import 'settings_screen.dart';
 
 // Main stateful widget that acts as the navigation shell
@@ -18,6 +18,7 @@ class _EmployeeDashboardState extends State<EmployeeDashboard> {
   // List of the main pages for the dashboard
   static const List<Widget> _pages = <Widget>[
     _DashboardHomePage(), // The main dashboard view
+    ProfileScreen(),
     MessagesEmployeeScreen(),
     VoiceAiScreen(), // Voice AI screen is now part of the main navigation
     Center(child: Text('Gamification Screen - Coming Soon')), // Placeholder
@@ -52,6 +53,11 @@ class _EmployeeDashboardState extends State<EmployeeDashboard> {
             icon: Icon(Icons.dashboard_outlined),
             activeIcon: Icon(Icons.dashboard),
             label: 'Home',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.person_outline),
+            activeIcon: Icon(Icons.person),
+            label: 'Profile',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.message_outlined),
@@ -109,18 +115,10 @@ class _DashboardHomePage extends StatelessWidget {
     final theme = Theme.of(context);
     return Row(
       children: [
-        // Make the avatar a button to navigate to the profile page
-        GestureDetector(
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => const EmployeeProfile()),
-            );
-          },
-          child: const CircleAvatar(
-            radius: 30,
-            child: Icon(Icons.person, size: 30),
-          ),
+        // The profile can now be accessed through the main navigation bar.
+        const CircleAvatar(
+          radius: 30,
+          child: Icon(Icons.person, size: 30),
         ),
         const SizedBox(width: 12),
         Column(

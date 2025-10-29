@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:powerlink_crm/screens/manager_dashboard.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:powerlink_crm/screens/employee_dashboard.dart';
 import 'package:powerlink_crm/screens/customer_dashboard.dart';
@@ -33,11 +34,11 @@ class _SplashScreenState extends State<SplashScreen> {
     try {
       // Session exists, so we have a user ID.
       final userId = session.user.id;
-      
-      // Check the employees table to see if this user is an employee.
+
+      // Check the employees table to see if this user is an employee and get their role.
       final employeeResponse = await supabase
           .from('employees')
-          .select('id')
+          .select('role')
           .eq('user_id', userId)
           .maybeSingle();
 
@@ -45,9 +46,16 @@ class _SplashScreenState extends State<SplashScreen> {
 
       if (employeeResponse != null) {
         // A record was found in the employees table.
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (context) => const EmployeeDashboard()),
-        );
+        final role = employeeResponse['role'] as String?;
+        if (role?.toLowerCase() == 'manager') {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (context) => const ManagerDashboard()),
+          );
+        } else {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (context) => const EmployeeDashboard()),
+          );
+        }
       } else {
         // No record found, so they must be a customer.
         Navigator.of(context).pushReplacement(

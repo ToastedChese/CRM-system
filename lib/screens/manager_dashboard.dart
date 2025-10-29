@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'manager_profile_screen.dart';
+import 'package:powerlink_crm/screens/profile_screen.dart';
+import 'package:powerlink_crm/screens/settings_screen.dart';
 import 'manager_messages_screen.dart';
 import 'manage_users_screen.dart';
 import 'customer_requests_screen.dart';
@@ -26,7 +27,8 @@ class _ManagerDashboardState extends State<ManagerDashboard> {
     ManagerMessagesScreen(),
     ManageUsersScreen(),
     CustomerRequestsScreen(),
-    ManagerProfileScreen(),
+    ProfileScreen(),
+    SettingsScreen(),
   ];
 
   void _onItemTapped(int index) => setState(() => _selectedIndex = index);
@@ -63,6 +65,11 @@ class _ManagerDashboardState extends State<ManagerDashboard> {
             label: 'Requests',
           ),
           BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.settings_outlined),
+            activeIcon: Icon(Icons.settings),
+            label: 'Settings',
+          ),
         ],
       ),
     );
