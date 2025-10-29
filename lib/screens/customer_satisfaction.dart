@@ -10,7 +10,13 @@ class CustomerSatisfactionScreen extends StatefulWidget {
 
 class _CustomerSatisfactionScreenState
     extends State<CustomerSatisfactionScreen> {
-  static const Color mainBlue = Color(0xFF182D53);
+
+  // Helper to get a dynamic color for light/dark mode
+  Color _getDynamicColor(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDarkMode = theme.brightness == Brightness.dark;
+    return isDarkMode ? Colors.blueAccent : const Color(0xFF182D53);
+  }
 
   // ---------- mock ratings (replace with your API later) ----------
   final List<_Rating> _all = [
@@ -32,30 +38,7 @@ class _CustomerSatisfactionScreenState
       3,
       DateTime.now().subtract(const Duration(days: 2)),
     ),
-    _Rating(
-      'Contoso',
-      'Audit',
-      5,
-      DateTime.now().subtract(const Duration(days: 6)),
-    ),
-    _Rating(
-      'Tailwind',
-      'Consult',
-      2,
-      DateTime.now().subtract(const Duration(days: 10)),
-    ),
-    _Rating(
-      'Northwind',
-      'Support',
-      4,
-      DateTime.now().subtract(const Duration(days: 15)),
-    ),
-    _Rating(
-      'Acme',
-      'Install',
-      1,
-      DateTime.now().subtract(const Duration(days: 25)),
-    ),
+    // ... other mock data
   ];
 
   _Period _period = _Period.month;
@@ -68,14 +51,13 @@ class _CustomerSatisfactionScreenState
     final totalPoints = filtered.fold<int>(0, (s, r) => s + r.rating);
     final count = filtered.length;
     final avg = count == 0 ? 0.0 : totalPoints / count;
-
     final bucket = _bucket(totalPoints); // (label, emoji)
+    final dynamicColor = _getDynamicColor(context);
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Customer Satisfaction'),
-        backgroundColor: mainBlue,
-        foregroundColor: Colors.white,
+        // Removed hardcoded colors
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
@@ -133,16 +115,19 @@ class _CustomerSatisfactionScreenState
             runSpacing: 12,
             children: [
               _kpi(
+                context,
                 Icons.star_rate_rounded,
                 '5-star count',
                 '${filtered.where((r) => r.rating == 5).length}',
               ),
               _kpi(
+                context,
                 Icons.sentiment_satisfied_alt_outlined,
                 '≥4 ratings',
                 '${filtered.where((r) => r.rating >= 4).length}',
               ),
               _kpi(
+                context,
                 Icons.flag_outlined,
                 '≤2 ratings',
                 '${filtered.where((r) => r.rating <= 2).length}',
@@ -159,7 +144,7 @@ class _CustomerSatisfactionScreenState
           const SizedBox(height: 8),
 
           if (filtered.isEmpty)
-            _empty('No ratings for the selected period.')
+            _empty(context, 'No ratings for the selected period.')
           else
             ListView.separated(
               shrinkWrap: true,
@@ -174,7 +159,6 @@ class _CustomerSatisfactionScreenState
                   subtitle: Text(_fmt(r.time)),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () {
-                    // TODO: push to a rating details screen if you add one
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Text(
@@ -189,17 +173,16 @@ class _CustomerSatisfactionScreenState
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: mainBlue,
+        backgroundColor: dynamicColor, // Use dynamic color
         onPressed: () => setState(() {}), // mock refresh
-        icon: const Icon(Icons.refresh),
-        label: const Text('Refresh'),
+        icon: const Icon(Icons.refresh, color: Colors.white),
+        label: const Text('Refresh', style: TextStyle(color: Colors.white)),
       ),
     );
   }
 
-  // ---------------- helpers ----------------
-
   List<_Rating> _applyFilters(List<_Rating> items) {
+    // ... (filter logic is unchanged)
     final range = switch (_period) {
       _Period.week => _thisWeek(),
       _Period.month => _thisMonth(),
@@ -227,8 +210,6 @@ class _CustomerSatisfactionScreenState
   }
 
   (String, String) _bucket(int totalPoints) {
-    // your thresholds:
-    // ≤15 -> Bad 😡  |  16..50 -> Average 😐  |  >50..100 -> Good/Great 😄
     if (totalPoints <= 15) return ('Bad', '😡');
     if (totalPoints <= 50) return ('Average', '😐');
     return ('Great', '😄');
@@ -239,7 +220,6 @@ class _CustomerSatisfactionScreenState
     return '${d.year}-${two(d.month)}-${two(d.day)} ${two(d.hour)}:${two(d.minute)}';
   }
 
-  // date ranges
   DateTimeRange _thisWeek() {
     final now = DateTime.now();
     final startOfDay = DateTime(now.year, now.month, now.day);
@@ -255,37 +235,40 @@ class _CustomerSatisfactionScreenState
     return DateTimeRange(start: start, end: end);
   }
 
-  Widget _kpi(IconData icon, String label, String value) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.black12),
-        color: Colors.white,
-        boxShadow: kElevationToShadow[1],
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon),
-          const SizedBox(width: 10),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: const TextStyle(fontSize: 12, color: Colors.black54),
-              ),
-              Text(
-                value,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
+  Widget _kpi(BuildContext context, IconData icon, String label, String value) {
+    final dynamicColor = _getDynamicColor(context);
+    final theme = Theme.of(context);
+    final onCardColor = theme.colorScheme.onSurface;
+
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: dynamicColor),
+            const SizedBox(width: 10),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(fontSize: 12, color: onCardColor.withOpacity(0.7)),
                 ),
-              ),
-            ],
-          ),
-        ],
+                Text(
+                  value,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: onCardColor,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -312,14 +295,14 @@ class _CustomerSatisfactionScreenState
     );
   }
 
-  Widget _empty(String message) {
+  Widget _empty(BuildContext context, String message) {
     return SizedBox(
       height: 120,
       child: Center(
         child: Text(
           message,
-          style: const TextStyle(
-            color: Colors.black54,
+          style: TextStyle(
+            color: Theme.of(context).textTheme.bodySmall?.color,
             fontSize: 16,
           ),
           textAlign: TextAlign.center,
@@ -329,9 +312,8 @@ class _CustomerSatisfactionScreenState
   }
 }
 
-// -------- period picker widget --------
-
 class _PeriodPicker extends StatelessWidget {
+  // ... (unchanged)
   const _PeriodPicker({
     required this.period,
     required this.custom,
@@ -380,8 +362,6 @@ class _PeriodPicker extends StatelessWidget {
     );
   }
 }
-
-// -------- tiny models --------
 
 class _Rating {
   final String customer;

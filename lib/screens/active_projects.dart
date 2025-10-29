@@ -3,10 +3,17 @@ import 'package:flutter/material.dart';
 class ActiveProjectsScreen extends StatelessWidget {
   const ActiveProjectsScreen({super.key});
 
-  static const Color mainBlue = Color(0xFF182D53);
+  // Helper to get a dynamic color for light/dark mode
+  Color _getDynamicColor(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDarkMode = theme.brightness == Brightness.dark;
+    return isDarkMode ? Colors.blueAccent : const Color(0xFF182D53);
+  }
 
   @override
   Widget build(BuildContext context) {
+    final dynamicColor = _getDynamicColor(context);
+    final mainBlue = const Color(0xFF182D53);
     // Mock data
     final managers = [
       _Person('Ava Williams', 8),
@@ -26,7 +33,6 @@ class ActiveProjectsScreen extends StatelessWidget {
         employees.fold<int>(0, (s, p) => s + p.count);
 
     return DefaultTabController(
-      // <-- provides a TabController
       length: 2,
       child: Scaffold(
         appBar: AppBar(
@@ -34,11 +40,13 @@ class ActiveProjectsScreen extends StatelessWidget {
           backgroundColor: mainBlue,
           foregroundColor: Colors.white,
           bottom: const TabBar(
+            indicatorColor: Colors.white,
+            labelColor: Colors.white,
+            unselectedLabelColor: Colors.white70,
             tabs: [
               Tab(text: 'Managers'),
               Tab(text: 'Employees'),
             ],
-            indicatorColor: Colors.white,
           ),
         ),
         body: Column(
@@ -50,13 +58,15 @@ class ActiveProjectsScreen extends StatelessWidget {
                 spacing: 12,
                 runSpacing: 12,
                 children: [
-                  _kpi(Icons.folder_open, 'Total Active', '$totalActive'),
+                  _kpi(context, Icons.folder_open, 'Total Active', '$totalActive'),
                   _kpi(
+                    context,
                     Icons.supervisor_account_outlined,
                     'Managers',
                     '${managers.length}',
                   ),
                   _kpi(
+                    context,
                     Icons.badge_outlined,
                     'Employees',
                     '${employees.length}',
@@ -65,7 +75,6 @@ class ActiveProjectsScreen extends StatelessWidget {
               ),
             ),
 
-            // Tab content must be constrained -> Expanded fixes the overflow
             Expanded(
               child: TabBarView(
                 children: [
@@ -78,47 +87,49 @@ class ActiveProjectsScreen extends StatelessWidget {
         ),
         floatingActionButton: FloatingActionButton.extended(
           onPressed: () {},
-          backgroundColor: mainBlue,
-          icon: const Icon(Icons.refresh),
-          label: const Text('Refresh'),
+          backgroundColor: dynamicColor,
+          icon: const Icon(Icons.refresh, color: Colors.white),
+          label: const Text('Refresh', style: TextStyle(color: Colors.white)),
         ),
       ),
     );
   }
 
-  // Small UI helpers
+  // Using Card for the KPI widget for automatic dark/light theme adaptation
+  Widget _kpi(BuildContext context, IconData icon, String label, String value) {
+    final dynamicColor = _getDynamicColor(context);
+    final theme = Theme.of(context);
+    final onCardColor = theme.colorScheme.onSurface;
 
-  static Widget _kpi(IconData icon, String label, String value) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.black12),
-        color: Colors.white,
-        boxShadow: kElevationToShadow[1],
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon),
-          const SizedBox(width: 10),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: const TextStyle(fontSize: 12, color: Colors.black54),
-              ),
-              Text(
-                value,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: dynamicColor),
+            const SizedBox(width: 10),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(fontSize: 12, color: onCardColor.withOpacity(0.7)),
                 ),
-              ),
-            ],
-          ),
-        ],
+                Text(
+                  value,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: onCardColor, // Adapts to theme
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -179,13 +190,12 @@ class _PeopleListState extends State<_PeopleList> {
                   child: Text(
                     '${p.count}',
                     style: TextStyle(
-                      color: color.shade700,
+                      color: color, // Use base color for better visibility
                       fontWeight: FontWeight.w700,
                     ),
                   ),
                 ),
                 onTap: () {
-                  // TODO: push to detail list for this person
                   ScaffoldMessenger.of(
                     context,
                   ).showSnackBar(SnackBar(content: Text('Open ${p.name}')));
@@ -264,5 +274,3 @@ class _Person {
 }
 
 enum _Sort { mostActive, aToZ, zToA }
-
-

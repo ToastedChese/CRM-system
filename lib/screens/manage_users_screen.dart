@@ -9,7 +9,6 @@ class ManageUsersScreen extends StatefulWidget {
 
 class _ManageUsersScreenState extends State<ManageUsersScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  static const Color mainBlue = Color(0xFF182D53);
 
   @override
   void initState() {
@@ -23,19 +22,33 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> with SingleTicker
     super.dispose();
   }
 
+  Color _getDynamicColor(BuildContext context, {bool isPrimary = true}) {
+    final theme = Theme.of(context);
+    final isDarkMode = theme.brightness == Brightness.dark;
+    if (isPrimary) {
+      return isDarkMode ? Colors.blueAccent : const Color(0xFF182D53);
+    } else {
+      return isDarkMode ? Colors.grey.shade400 : Colors.grey.shade600;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final dynamicPrimaryColor = _getDynamicColor(context);
+    
+    // Explicitly set the AppBar background to match the Scaffold's background
+    final appBarBackgroundColor = Theme.of(context).scaffoldBackgroundColor;
+
     return Scaffold(
-      backgroundColor: Colors.grey[100],
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: appBarBackgroundColor,
         elevation: 0,
-        toolbarHeight: 0, // Hide the appbar, but keep it for the tab bar
+        toolbarHeight: 0,
         bottom: TabBar(
           controller: _tabController,
-          labelColor: mainBlue,
-          unselectedLabelColor: Colors.grey,
-          indicatorColor: mainBlue,
+          labelColor: dynamicPrimaryColor,
+          unselectedLabelColor: _getDynamicColor(context, isPrimary: false),
+          indicatorColor: dynamicPrimaryColor,
           tabs: const [
             Tab(text: 'Employees', icon: Icon(Icons.badge)),
             Tab(text: 'Customers', icon: Icon(Icons.supervisor_account)),
@@ -50,36 +63,28 @@ class _ManageUsersScreenState extends State<ManageUsersScreen> with SingleTicker
         ],
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          // In a real app, show a dialog or new screen to add a user based on the current tab.
-          // final userType = _tabController.index == 0 ? 'Employee' : 'Customer';
-          // print('Add new $userType');
-        },
-        backgroundColor: mainBlue,
+        onPressed: () {},
+        backgroundColor: dynamicPrimaryColor,
         child: const Icon(Icons.add, color: Colors.white),
       ),
     );
   }
 }
 
-// ------------------------ USER LIST (Private Widget) ------------------------
 class _UserList extends StatelessWidget {
   final String userType;
   const _UserList({required this.userType});
 
-  // --- Database & Backend Placeholder ---
-  /*
-  Future<List<Map<String, dynamic>>> _fetchUsers() async {
-    // In a real app, you would fetch users from a specific collection based on userType.
-    // final collection = userType == 'Employee' ? 'employees' : 'customers';
-    // final snapshot = await FirebaseFirestore.instance.collection(collection).get();
-    // return snapshot.docs.map((doc) => doc.data()).toList();
+  Color _getDynamicColor(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDarkMode = theme.brightness == Brightness.dark;
+    return isDarkMode ? Colors.blueAccent : const Color(0xFF182D53);
   }
-  */
 
   @override
   Widget build(BuildContext context) {
-    // Dummy data
+    final dynamicColor = _getDynamicColor(context);
+    final trailingIconColor = Theme.of(context).textTheme.bodySmall?.color;
     final items = userType == 'Employee'
         ? ['John Smith', 'Jane Doe', 'Peter Jones']
         : ['TechCorp', 'Global Solutions', 'Innovate LLC'];
@@ -92,14 +97,12 @@ class _UserList extends StatelessWidget {
           margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
           child: ListTile(
             leading: CircleAvatar(
-              backgroundColor: const Color(0xFF182D53),
+              backgroundColor: dynamicColor,
               child: Text(userType[0], style: const TextStyle(color: Colors.white)),
             ),
-            title: Text(items[index]),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-            onTap: () {
-              // In a real app, navigate to a detail screen for this user.
-            },
+            title: Text(items[index]), // Default color will adapt to theme
+            trailing: Icon(Icons.arrow_forward_ios, size: 16, color: trailingIconColor),
+            onTap: () {},
           ),
         );
       },

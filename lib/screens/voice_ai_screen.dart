@@ -40,37 +40,57 @@ class _VoiceAiScreenState extends State<VoiceAiScreen> {
     super.dispose();
   }
 
+  /// Resets the entire screen to its initial state.
+  void _resetScreen() {
+    if (_speech.isListening) {
+      _speech.stop();
+    }
+    setState(() {
+      _textController.text = 'Press the button and start speaking';
+      _contextController.clear();
+      _summary = '';
+      _isListening = false;
+      _isSummarizing = false;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    // Use a Stack to layer the floating button on top of the scrollable content.
     return Stack(
       children: [
-        // Layer 1: The scrollable content
         SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(24.0, 24.0, 24.0, 120.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Section for Transcribed Text
-              Text(
-                "Transcribed Text",
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    "Transcribed Text",
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.refresh),
+                    tooltip: 'Reset Screen',
+                    onPressed: _resetScreen,
+                  ),
+                ],
               ),
               const SizedBox(height: 8),
               TextField(
                 controller: _textController,
                 readOnly: true,
                 maxLines: null,
-                style: const TextStyle(fontSize: 22.0, color: Colors.black),
-                decoration: const InputDecoration(
-                  border: InputBorder.none,
+                style: const TextStyle(fontSize: 22.0),
+                decoration: InputDecoration(
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8.0),
+                  ),
                   filled: true,
-                  fillColor: Color(0xFFF0F0F0),
                 ),
               ),
               const SizedBox(height: 24),
-
-              // Section for Context
               Text(
                 "Context (Optional)",
                 style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
@@ -79,21 +99,18 @@ class _VoiceAiScreenState extends State<VoiceAiScreen> {
               TextField(
                 controller: _contextController,
                 maxLines: 3,
-                style: const TextStyle(fontSize: 16.0, color: Colors.black),
+                style: const TextStyle(fontSize: 16.0),
                 decoration: InputDecoration(
                   hintText: 'e.g., "Summarize this for a sales meeting about project X"',
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8.0),
                   ),
                   filled: true,
-                  fillColor: const Color(0xFFF0F0F0),
                 ),
               ),
               const SizedBox(height: 24),
               const Divider(),
               const SizedBox(height: 24),
-
-              // Section for AI Summary
               Text(
                 "AI Summary",
                 style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
@@ -103,7 +120,6 @@ class _VoiceAiScreenState extends State<VoiceAiScreen> {
             ],
           ),
         ),
-        // Layer 2: The floating microphone button with blur and gradient effect
         Align(
           alignment: Alignment.bottomCenter,
           child: Padding(
@@ -118,9 +134,9 @@ class _VoiceAiScreenState extends State<VoiceAiScreen> {
                   repeat: true,
                   child: FloatingActionButton(
                     onPressed: _listen,
-                    backgroundColor: Colors.transparent, // Button is transparent
+                    backgroundColor: Colors.transparent,
                     elevation: 0,
-                    child: Container( // This container provides the gradient background
+                    child: Container(
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         gradient: RadialGradient(
@@ -147,56 +163,51 @@ class _VoiceAiScreenState extends State<VoiceAiScreen> {
     );
   }
 
-
-  /// Builds the widget to display the summary or a loading/error state.
   Widget _buildSummaryWidget() {
+    final theme = Theme.of(context);
     if (_isSummarizing) {
       return const Center(child: CircularProgressIndicator());
     }
-
     if (_summary.isEmpty) {
-      return const Text(
+      return Text(
         'Summary will appear here after you stop speaking.',
-        style: TextStyle(color: Colors.grey, fontSize: 16),
+        style: TextStyle(color: theme.hintColor, fontSize: 16),
       );
     }
-
-    // Display the summary or an error message
     bool isError = _summary.startsWith("Error:");
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF0F0F0),
+    return Card(
+      elevation: 1,
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(8),
-        border: isError ? Border.all(color: Colors.redAccent) : null,
+        side: isError
+            ? BorderSide(color: theme.colorScheme.error.withOpacity(0.5))
+            : BorderSide.none,
       ),
-      child: Text(
-        _summary,
-        style: TextStyle(
-          fontSize: 16,
-          color: isError ? Colors.redAccent : Colors.black,
+      child: Padding(
+        padding: const EdgeInsets.all(12.0),
+        child: Text(
+          _summary,
+          style: TextStyle(
+            fontSize: 16,
+            color: isError ? theme.colorScheme.error : null,
+          ),
         ),
       ),
     );
   }
 
-  /// Handles starting and stopping the speech recognition.
   void _listen() async {
     if (!_isListening) {
       bool available = await _speech.initialize(
         onStatus: (val) => print('onStatus: $val'),
         onError: (val) => print('onError: $val'),
       );
-
       if (available) {
-        if (_textController.text == 'Press the button and start speaking') {
-          _textController.clear();
-        }
+        _textController.clear(); // Always clear for a new session
         setState(() {
           _isListening = true;
-          _summary = ''; // Clear previous summary when starting
+          _summary = '';
         });
-
         _speech.listen(
           listenFor: const Duration(minutes: 30),
           pauseFor: const Duration(minutes: 5),
@@ -224,7 +235,6 @@ class _VoiceAiScreenState extends State<VoiceAiScreen> {
     }
   }
 
-  /// Sends the transcribed text to the Hugging Face API for summarization.
   Future<void> _summarizeText(
       {required String textToSummarize, String? context}) async {
     setState(() {

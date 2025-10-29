@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import 'package:powerlink_crm/screens/gamify_screen.dart';
 import 'package:powerlink_crm/screens/voice_ai_screen.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'profile_screen.dart';
 import 'messages_employee.dart';
 import 'settings_screen.dart';
@@ -21,7 +24,7 @@ class _EmployeeDashboardState extends State<EmployeeDashboard> {
     ProfileScreen(),
     MessagesEmployeeScreen(),
     VoiceAiScreen(), // Voice AI screen is now part of the main navigation
-    Center(child: Text('Gamification Screen - Coming Soon')), // Placeholder
+    GamifyScreen(),
     SettingsScreen(),
   ];
 
@@ -86,8 +89,49 @@ class _EmployeeDashboardState extends State<EmployeeDashboard> {
 }
 
 // The content for the "Home" tab of the dashboard
-class _DashboardHomePage extends StatelessWidget {
+class _DashboardHomePage extends StatefulWidget {
   const _DashboardHomePage();
+
+  @override
+  State<_DashboardHomePage> createState() => _DashboardHomePageState();
+}
+
+class _DashboardHomePageState extends State<_DashboardHomePage> {
+  Stream<Map<String, dynamic>>? _employeeStream;
+  final _user = Supabase.instance.client.auth.currentUser;
+
+  @override
+  void initState() {
+    super.initState();
+    if (_user != null) {
+      _employeeStream = Supabase.instance.client
+          .from('employees')
+          .stream(primaryKey: ['id'])
+          .eq('user_id', _user!.id)
+          .map((list) => list.isNotEmpty ? list.first : <String, dynamic>{});
+    }
+  }
+
+  Color _getDynamicColor(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDarkMode = theme.brightness == Brightness.dark;
+    return isDarkMode ? Colors.blueAccent : theme.primaryColor;
+  }
+
+  String _getGreeting() {
+    final hour = DateTime.now().hour;
+    if (hour < 12) {
+      return 'Good Morning';
+    } else if (hour < 17) {
+      return 'Good Afternoon';
+    } else {
+      return 'Good Evening';
+    }
+  }
+
+  String _getCurrentDate() {
+    return DateFormat('MMMM d, yyyy').format(DateTime.now());
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -113,36 +157,51 @@ class _DashboardHomePage extends StatelessWidget {
 
   Widget _buildHeader(BuildContext context) {
     final theme = Theme.of(context);
-    return Row(
-      children: [
-        // The profile can now be accessed through the main navigation bar.
-        const CircleAvatar(
-          radius: 30,
-          child: Icon(Icons.person, size: 30),
-        ),
-        const SizedBox(width: 12),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Welcome, Alex',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: theme.primaryColor, // Apply consistent color
+    final greeting = _getGreeting();
+    final currentDate = _getCurrentDate();
+    final dynamicColor = _getDynamicColor(context);
+
+    return StreamBuilder<Map<String, dynamic>>(
+        stream: _employeeStream,
+        builder: (context, snapshot) {
+          String firstName = '...';
+          if (snapshot.hasData && snapshot.data!.isNotEmpty) {
+            firstName = snapshot.data!['first_name'] ?? 'Employee';
+          } else if (snapshot.connectionState == ConnectionState.done) {
+            firstName = 'Employee';
+          }
+
+          return Row(
+            children: [
+              const CircleAvatar(
+                radius: 30,
+                child: Icon(Icons.person, size: 30),
               ),
-            ),
-            Text(
-              'Today: October 20, 2025',
-              style: theme.textTheme.bodySmall,
-            ),
-          ],
-        ),
-      ],
-    );
+              const SizedBox(width: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '$greeting, $firstName',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: dynamicColor,
+                    ),
+                  ),
+                  Text(
+                    'Today: $currentDate',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ],
+          );
+        });
   }
 
   Widget _buildSectionTitle(BuildContext context, String title) {
+    final dynamicColor = _getDynamicColor(context);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8.0),
       child: Text(
@@ -150,7 +209,7 @@ class _DashboardHomePage extends StatelessWidget {
         style: TextStyle(
           fontSize: 18,
           fontWeight: FontWeight.bold,
-          color: Theme.of(context).primaryColor,
+          color: dynamicColor,
         ),
       ),
     );
@@ -193,6 +252,7 @@ class _DashboardHomePage extends StatelessWidget {
   }
 
   Widget _buildLeadsList(BuildContext context) {
+    final dynamicColor = _getDynamicColor(context);
     final leads = [
       {'name': 'John Smith', 'source': 'Website Form', 'status': 'New'},
       {'name': 'Jane Doe', 'source': 'Referral', 'status': 'Contacted'},
@@ -205,7 +265,7 @@ class _DashboardHomePage extends StatelessWidget {
           margin: const EdgeInsets.symmetric(vertical: 4),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
           child: ListTile(
-            leading: Icon(Icons.person, color: Theme.of(context).primaryColor),
+            leading: Icon(Icons.person, color: dynamicColor),
             title: Text(lead['name']!),
             subtitle: Text('Source: ${lead['source']}'),
             trailing: Text(lead['status']!, style: const TextStyle(fontWeight: FontWeight.w500)),
@@ -216,6 +276,7 @@ class _DashboardHomePage extends StatelessWidget {
   }
 
   Widget _buildInteractionsList(BuildContext context) {
+    final dynamicColor = _getDynamicColor(context);
     final interactions = [
       {'type': 'Call', 'with': 'John Smith', 'time': '10:00 AM'},
       {'type': 'Email', 'with': 'Jane Doe', 'time': 'Yesterday'},
@@ -240,7 +301,7 @@ class _DashboardHomePage extends StatelessWidget {
           margin: const EdgeInsets.symmetric(vertical: 4),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
           child: ListTile(
-            leading: Icon(icon, color: Theme.of(context).primaryColor),
+            leading: Icon(icon, color: dynamicColor),
             title: Text('${i['type']} with ${i['with']}'),
             subtitle: Text('Time: ${i['time']}'),
           ),

@@ -8,34 +8,7 @@ class ManagerMessagesScreen extends StatefulWidget {
 }
 
 class _ManagerMessagesScreenState extends State<ManagerMessagesScreen> {
-  static const Color mainBlue = Color(0xFF182D53);
 
-  // --- Database & Backend Placeholder ---
-  /*
-  Future<List<Map<String, dynamic>>> _fetchConversations() async {
-    // In a real app, you would fetch this from your database (e.g., Firestore)
-    // and filter conversations where the manager is a participant.
-    // await Future.delayed(const Duration(seconds: 1)); // Simulate network delay
-    return [
-      {
-        'id': 'chat1',
-        'name': 'Alex (Customer)',
-        'message': 'Thank you for the quick response!',
-        'time': '10:45 AM',
-        'isRead': true,
-        'avatarUrl': '...'
-      },
-      {
-        'id': 'chat2',
-        'name': 'Sales Team Group',
-        'message': 'Jane: Meeting confirmed for 2 PM.',
-        'time': '9:30 AM',
-        'isRead': false,
-        'avatarUrl': '...'
-      },
-    ];
-  }
-  */
   final List<Map<String, Object>> _conversations = [
     {
       'name': 'Alex (Customer)',
@@ -57,10 +30,17 @@ class _ManagerMessagesScreenState extends State<ManagerMessagesScreen> {
     },
   ];
 
+  Color _getDynamicColor(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDarkMode = theme.brightness == Brightness.dark;
+    return isDarkMode ? Colors.blueAccent : const Color(0xFF182D53);
+  }
+
   @override
   Widget build(BuildContext context) {
+    final dynamicColor = _getDynamicColor(context);
     return Scaffold(
-      backgroundColor: Colors.grey[100],
+      // backgroundColor has been removed to allow theme adaptation
       body: ListView.builder(
         itemCount: _conversations.length,
         itemBuilder: (context, index) {
@@ -70,34 +50,35 @@ class _ManagerMessagesScreenState extends State<ManagerMessagesScreen> {
             conversation['message'] as String,
             conversation['time'] as String,
             conversation['isRead'] as bool,
+            dynamicColor,
           );
         },
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          // In a real app, this would open a screen to select a user/group to message.
-        },
-        backgroundColor: mainBlue,
+        onPressed: () {},
+        backgroundColor: dynamicColor,
         child: const Icon(Icons.add, color: Colors.white),
       ),
     );
   }
 
-  Widget _buildConversationTile(String name, String message, String time, bool isRead) {
+  Widget _buildConversationTile(String name, String message, String time, bool isRead, Color dynamicColor) {
+    final subtitleColor = Theme.of(context).textTheme.bodySmall?.color;
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       elevation: 2,
       child: ListTile(
-        leading: const CircleAvatar(
-          backgroundColor: mainBlue,
-          child: Icon(Icons.person, color: Colors.white),
+        leading: CircleAvatar(
+          backgroundColor: dynamicColor,
+          child: const Icon(Icons.person, color: Colors.white),
         ),
-        title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
+        title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold)), // Let the theme decide the color
         subtitle: Text(
           message,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
+          style: TextStyle(color: subtitleColor), // Use theme's subtitle color
         ),
         trailing: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -107,16 +88,13 @@ class _ManagerMessagesScreenState extends State<ManagerMessagesScreen> {
             if (!isRead)
               const SizedBox(height: 4),
             if (!isRead)
-              const CircleAvatar(
+              CircleAvatar(
                 radius: 5,
-                backgroundColor: mainBlue,
+                backgroundColor: dynamicColor,
               ),
           ],
         ),
-        onTap: () {
-          // In a real app, this would navigate to the detailed chat screen for this conversation.
-          // Navigator.push(context, MaterialPageRoute(builder: (context) => ChatScreen(conversationId: ...)));
-        },
+        onTap: () {},
       ),
     );
   }

@@ -20,7 +20,6 @@ class ManagerDashboard extends StatefulWidget {
 
 class _ManagerDashboardState extends State<ManagerDashboard> {
   int _selectedIndex = 0;
-  static const Color mainBlue = Color(0xFF182D53);
 
   final List<Widget> _pages = const [
     _ManagerHomePage(),
@@ -37,22 +36,17 @@ class _ManagerDashboardState extends State<ManagerDashboard> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'Manager Dashboard',
-          style: TextStyle(color: Colors.white),
-        ),
-        backgroundColor: mainBlue,
-        iconTheme: const IconThemeData(color: Colors.white),
+        title: const Text('Manager Dashboard'),
         centerTitle: true,
+        automaticallyImplyLeading: false, // Ensure no back button appears
       ),
       body: _pages[_selectedIndex],
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _selectedIndex,
         onTap: _onItemTapped,
-        backgroundColor: Colors.white,
-        selectedItemColor: mainBlue,
-        unselectedItemColor: Colors.grey,
-        type: BottomNavigationBarType.fixed,
+        type: BottomNavigationBarType.fixed, // Ensures all labels are visible
+        selectedFontSize: 12,
+        unselectedFontSize: 12,
         items: const [
           BottomNavigationBarItem(
             icon: Icon(Icons.dashboard),
@@ -67,7 +61,6 @@ class _ManagerDashboardState extends State<ManagerDashboard> {
           BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
           BottomNavigationBarItem(
             icon: Icon(Icons.settings_outlined),
-            activeIcon: Icon(Icons.settings),
             label: 'Settings',
           ),
         ],
@@ -79,7 +72,13 @@ class _ManagerDashboardState extends State<ManagerDashboard> {
 // ------------------------ MANAGER HOME PAGE (Private Widget) ------------------------
 class _ManagerHomePage extends StatelessWidget {
   const _ManagerHomePage();
-  static const Color mainBlue = Color(0xFF182D53);
+
+  Color _getDynamicColor(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDarkMode = theme.brightness == Brightness.dark;
+    // Use a bright, readable accent color for dark mode
+    return isDarkMode ? Colors.blueAccent : theme.primaryColor;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -89,23 +88,22 @@ class _ManagerHomePage extends StatelessWidget {
       'team_performance': 'Excellent',
       'new_leads': '8',
     };
+    final dynamicColor = _getDynamicColor(context);
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'Team Overview',
             style: TextStyle(
               fontSize: 22,
               fontWeight: FontWeight.bold,
-              color: mainBlue,
+              color: dynamicColor,
             ),
           ),
           const SizedBox(height: 16),
-
-          // KPI grid (tappable cards)
           GridView.count(
             crossAxisCount: 2,
             shrinkWrap: true,
@@ -118,6 +116,7 @@ class _ManagerHomePage extends StatelessWidget {
                 title: 'Active Projects',
                 value: kpiData['active_projects']!,
                 icon: Icons.folder,
+                color: dynamicColor,
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute(
                     builder: (_) => const ActiveProjectsScreen(),
@@ -129,6 +128,7 @@ class _ManagerHomePage extends StatelessWidget {
                 title: 'Customer Satisfaction',
                 value: kpiData['customer_satisfaction']!,
                 icon: Icons.sentiment_satisfied,
+                color: dynamicColor,
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute(
                     builder: (_) => const CustomerSatisfactionScreen(),
@@ -140,6 +140,7 @@ class _ManagerHomePage extends StatelessWidget {
                 title: 'Team Performance',
                 value: kpiData['team_performance']!,
                 icon: Icons.star,
+                color: dynamicColor,
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute(
                     builder: (_) => const TeamPerformanceScreen(),
@@ -151,30 +152,33 @@ class _ManagerHomePage extends StatelessWidget {
                 title: 'New Leads This Week',
                 value: kpiData['new_leads']!,
                 icon: Icons.show_chart,
+                color: dynamicColor,
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const NewLeadsScreen()),
                 ),
               ),
             ],
           ),
-
           const SizedBox(height: 24),
-          const Text(
+          Text(
             'Recent Activity',
             style: TextStyle(
               fontSize: 22,
               fontWeight: FontWeight.bold,
-              color: mainBlue,
+              color: dynamicColor,
             ),
           ),
           const SizedBox(height: 10),
           _buildActivityItem(
+            context,
             'New service request from "TechCorp" was assigned to Jane Doe.',
           ),
           _buildActivityItem(
+            context,
             'Employee "John Smith" completed a task for "Innovate LLC".',
           ),
           _buildActivityItem(
+            context,
             'A new customer "Global Solutions" was successfully onboarded.',
           ),
         ],
@@ -182,12 +186,13 @@ class _ManagerHomePage extends StatelessWidget {
     );
   }
 
-  /// Tappable KPI card
   Widget _buildKpiCard(
-    BuildContext context, {
+    BuildContext context,
+    {
     required String title,
     required String value,
     required IconData icon,
+    required Color color,
     required VoidCallback onTap,
   }) {
     return InkWell(
@@ -202,7 +207,7 @@ class _ManagerHomePage extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(icon, size: 30, color: mainBlue),
+              Icon(icon, size: 30, color: color),
               const SizedBox(height: 10),
               Text(
                 title,
@@ -211,10 +216,10 @@ class _ManagerHomePage extends StatelessWidget {
               const SizedBox(height: 4),
               Text(
                 value,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
-                  color: mainBlue,
+                  color: color,
                 ),
               ),
             ],
@@ -224,13 +229,14 @@ class _ManagerHomePage extends StatelessWidget {
     );
   }
 
-  Widget _buildActivityItem(String activity) {
+  Widget _buildActivityItem(BuildContext context, String activity) {
+    final dynamicColor = _getDynamicColor(context);
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 6),
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       child: ListTile(
-        leading: const Icon(Icons.history, color: mainBlue),
+        leading: Icon(Icons.history, color: dynamicColor),
         title: Text(activity, style: const TextStyle(fontSize: 14)),
       ),
     );

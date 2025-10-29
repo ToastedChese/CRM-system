@@ -38,19 +38,20 @@ class NewLeadsScreen extends StatelessWidget {
     ];
 
     return DefaultTabController(
-      // <-- provides a TabController for both TabBar + TabBarView
       length: 2,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('New Leads', style: TextStyle(color: Colors.white)),
+          title: const Text('New Leads'),
           backgroundColor: mainBlue,
           foregroundColor: Colors.white,
           bottom: const TabBar(
+            indicatorColor: Colors.white,
+            labelColor: Colors.white,
+            unselectedLabelColor: Colors.white70,
             tabs: [
               Tab(text: 'This Week'),
               Tab(text: 'By Month'),
             ],
-            indicatorColor: Colors.white,
           ),
         ),
         body: _NewLeadsBody(allLeads: allLeads),
@@ -68,27 +69,27 @@ class _NewLeadsBody extends StatefulWidget {
 }
 
 class _NewLeadsBodyState extends State<_NewLeadsBody> {
-  static const Color mainBlue = Color(0xFF182D53);
   DateTime _month = DateTime(DateTime.now().year, DateTime.now().month);
+
+  Color _getDynamicColor(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDarkMode = theme.brightness == Brightness.dark;
+    return isDarkMode ? Colors.blueAccent : const Color(0xFF182D53);
+  }
 
   @override
   Widget build(BuildContext context) {
     final week = _filterWeek(widget.allLeads);
     final month = _filterMonth(widget.allLeads, _month);
+    final dynamicColor = _getDynamicColor(context);
 
     return Column(
       children: [
-        // top padding so lists aren't jammed against the edge
         const SizedBox(height: 8),
-
-        // The TabBarView must be constrained -> Expanded avoids bottom overflow
         Expanded(
           child: TabBarView(
             children: [
-              // -------- This Week --------
               _LeadsList(leads: week, emptyText: 'No new leads this week.'),
-
-              // -------- By Month --------
               Column(
                 children: [
                   Padding(
@@ -98,16 +99,17 @@ class _NewLeadsBodyState extends State<_NewLeadsBody> {
                         Expanded(
                           child: Text(
                             _label(_month),
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.w600,
-                              color: mainBlue,
+                              color: dynamicColor,
                             ),
                           ),
                         ),
                         FilledButton(
                           style: FilledButton.styleFrom(
-                            backgroundColor: mainBlue,
+                            backgroundColor: dynamicColor,
+                            foregroundColor: Colors.white,
                           ),
                           onPressed: _pickMonth,
                           child: const Text('Choose Month'),
@@ -144,32 +146,18 @@ class _NewLeadsBodyState extends State<_NewLeadsBody> {
     }
   }
 
-  // -------- helpers --------
   static String _label(DateTime m) {
     const names = [
-      'January',
-      'February',
-      'March',
-      'April',
-      'May',
-      'June',
-      'July',
-      'August',
-      'September',
-      'October',
-      'November',
-      'December',
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December',
     ];
     return '${names[m.month - 1]} ${m.year}';
   }
 
   static List<_Lead> _filterWeek(List<_Lead> it) {
     final now = DateTime.now();
-    final start = DateTime(
-      now.year,
-      now.month,
-      now.day,
-    ).subtract(Duration(days: now.weekday - 1)); // Mon
+    final start = DateTime(now.year, now.month, now.day)
+        .subtract(Duration(days: now.weekday - 1)); // Mon
     final end = start.add(const Duration(days: 7));
     return it
         .where((l) => l.time.isAfter(start) && l.time.isBefore(end))
@@ -187,7 +175,6 @@ class _NewLeadsBodyState extends State<_NewLeadsBody> {
   }
 }
 
-// ---------- simple list widget ----------
 class _LeadsList extends StatelessWidget {
   const _LeadsList({required this.leads, required this.emptyText});
   final List<_Lead> leads;
@@ -196,7 +183,7 @@ class _LeadsList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (leads.isEmpty) {
-      return Center(child: Text(emptyText));
+      return Center(child: Text(emptyText, style: TextStyle(color: Theme.of(context).textTheme.bodySmall?.color)));
     }
     return ListView.separated(
       padding: const EdgeInsets.symmetric(vertical: 8),
@@ -221,7 +208,6 @@ class _LeadsList extends StatelessWidget {
   }
 }
 
-// ---------- tiny model ----------
 class _Lead {
   final String name, source;
   final DateTime time;

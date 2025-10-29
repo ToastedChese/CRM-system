@@ -8,7 +8,6 @@ class TeamPerformanceScreen extends StatefulWidget {
 }
 
 class _TeamPerformanceScreenState extends State<TeamPerformanceScreen> {
-  static const Color mainBlue = Color(0xFF182D53);
 
   // --- mock performance data (counts of tasks by bucket) ---
   final List<_MemberPerf> _all = [
@@ -35,8 +34,7 @@ class _TeamPerformanceScreenState extends State<TeamPerformanceScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Team Performance'),
-        backgroundColor: mainBlue,
-        foregroundColor: Colors.white,
+        // Removed hardcoded colors
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
@@ -106,9 +104,9 @@ class _TeamPerformanceScreenState extends State<TeamPerformanceScreen> {
             spacing: 12,
             runSpacing: 12,
             children: [
-              _kpi('Great (before due)', pct(team.before), '😄'),
-              _kpi('Good (on due date)', pct(team.on), '🙂'),
-              _kpi('Horrible (overdue)', pct(team.over), '😫'),
+              _kpi(context, 'Great (before due)', pct(team.before), '😄'),
+              _kpi(context, 'Good (on due date)', pct(team.on), '🙂'),
+              _kpi(context, 'Horrible (overdue)', pct(team.over), '😫'),
             ],
           ),
           const SizedBox(height: 8),
@@ -132,7 +130,7 @@ class _TeamPerformanceScreenState extends State<TeamPerformanceScreen> {
 
           // Members
           if (filtered.isEmpty)
-            _empty('No teammates match your filters.')
+            _empty(context, 'No teammates match your filters.')
           else
             ListView.separated(
               shrinkWrap: true,
@@ -159,7 +157,6 @@ class _TeamPerformanceScreenState extends State<TeamPerformanceScreen> {
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                   onTap: () {
-                    // TODO: navigate to this member’s tasks if you add a detail screen
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(content: Text('${m.name}: ${b.label}')),
                     );
@@ -199,7 +196,6 @@ class _TeamPerformanceScreenState extends State<TeamPerformanceScreen> {
     return list;
   }
 
-  // Score: reward "before", then "on", penalize "over"
   int _score(_MemberPerf m) => (m.before * 2) + (m.on) - (m.over * 3);
 
   (String label, String emoji) _badgeFromBuckets(_Buckets b) {
@@ -218,49 +214,49 @@ class _TeamPerformanceScreenState extends State<TeamPerformanceScreen> {
     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
   );
 
-  Widget _kpi(String label, String value, String emoji) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.black12),
-        color: Colors.white,
-        boxShadow: kElevationToShadow[1],
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(emoji, style: const TextStyle(fontSize: 20)),
-          const SizedBox(width: 10),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: const TextStyle(fontSize: 12, color: Colors.black54),
-              ),
-              Text(
-                value,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
+  Widget _kpi(BuildContext context, String label, String value, String emoji) {
+    final theme = Theme.of(context);
+    final onCardColor = theme.colorScheme.onSurface;
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(emoji, style: const TextStyle(fontSize: 20)),
+            const SizedBox(width: 10),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(fontSize: 12, color: onCardColor.withOpacity(0.7)),
                 ),
-              ),
-            ],
-          ),
-        ],
+                Text(
+                  value,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: onCardColor,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _empty(String text) {
+  Widget _empty(BuildContext context, String text) {
     return Padding(
       padding: const EdgeInsets.only(top: 24),
-      child: Center(child: Text(text)),
+      child: Center(child: Text(text, style: TextStyle(color: Theme.of(context).textTheme.bodySmall?.color))),
     );
   }
 
-  /// Simple stacked progress bar: before (green), on (blue/grey), over (red)
   Widget _stackBar({required int before, required int on, required int over}) {
     final t = (before + on + over).clamp(1, 1 << 30);
     final bw = before / t;
@@ -293,13 +289,11 @@ extension on (String, String) {
   String get label => this.$1;
 }
 
-/* ------------------- tiny models ------------------- */
-
 class _MemberPerf {
   final String name;
-  final int before; // completed before due date
-  final int on; // completed on due date
-  final int over; // completed after due date
+  final int before; 
+  final int on; 
+  final int over; 
   _MemberPerf(
     this.name, {
     required this.before,
@@ -337,4 +331,3 @@ class _Buckets {
 enum _Period { week, month, quarter }
 
 enum _Sort { bestFirst, mostTasks, aToZ }
-

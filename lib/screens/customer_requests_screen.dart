@@ -8,16 +8,7 @@ class CustomerRequestsScreen extends StatefulWidget {
 }
 
 class _CustomerRequestsScreenState extends State<CustomerRequestsScreen> {
-  static const Color mainBlue = Color(0xFF182D53);
 
-  // --- Database & Backend Placeholder ---
-  /*
-  Future<List<Map<String, dynamic>>> _fetchRequests() async {
-    // In a real app, you'd fetch this from your database, likely filtering for 'pending' status.
-    // final snapshot = await FirebaseFirestore.instance.collection('service_requests').where('status', isEqualTo: 'pending').get();
-    // return snapshot.docs.map((doc) => {'id': doc.id, ...doc.data()}).toList();
-  }
-  */
   final List<Map<String, String>> _requests = [
     {
       'customer': 'TechCorp',
@@ -39,22 +30,30 @@ class _CustomerRequestsScreenState extends State<CustomerRequestsScreen> {
     },
   ];
 
+  Color _getDynamicColor(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDarkMode = theme.brightness == Brightness.dark;
+    return isDarkMode ? Colors.blueAccent : const Color(0xFF182D53);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[100],
+      // The background now correctly adapts to the theme.
       body: ListView.builder(
         padding: const EdgeInsets.all(8),
         itemCount: _requests.length,
         itemBuilder: (context, index) {
           final request = _requests[index];
-          return _buildRequestCard(request);
+          return _buildRequestCard(request, _getDynamicColor(context));
         },
       ),
     );
   }
 
-  Widget _buildRequestCard(Map<String, String> request) {
+  Widget _buildRequestCard(Map<String, String> request, Color dynamicColor) {
+    final subtitleColor = Theme.of(context).textTheme.bodySmall?.color;
+
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
       elevation: 3,
@@ -66,12 +65,12 @@ class _CustomerRequestsScreenState extends State<CustomerRequestsScreen> {
           children: [
             Text(
               request['customer']!,
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: mainBlue),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: dynamicColor),
             ),
             const SizedBox(height: 8),
-            Text(request['requestType']!, style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.black54)),
+            Text(request['requestType']!, style: TextStyle(fontWeight: FontWeight.w600, color: subtitleColor)),
             const SizedBox(height: 4),
-            Text(request['details']!, style: const TextStyle(fontSize: 14)),
+            Text(request['details']!, style: const TextStyle(fontSize: 14)), // Default color adapts to theme
             const Divider(height: 20),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -79,7 +78,7 @@ class _CustomerRequestsScreenState extends State<CustomerRequestsScreen> {
                 Text('Date: ${request['date']!}', style: const TextStyle(color: Colors.grey, fontSize: 12)),
                 Row(
                   children: [
-                    TextButton(onPressed: () {}, child: const Text('Assign', style: TextStyle(color: mainBlue))),
+                    TextButton(onPressed: () {}, child: Text('Assign', style: TextStyle(color: dynamicColor))),
                     TextButton(onPressed: () {}, child: const Text('Resolve', style: TextStyle(color: Colors.green))),
                   ],
                 ),

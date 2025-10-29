@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:powerlink_crm/screens/customer_messages_screen.dart';
 import 'package:powerlink_crm/screens/customer_profile_screen.dart';
 import 'package:powerlink_crm/screens/customer_support_screen.dart';
 import 'package:powerlink_crm/screens/customer_settings_screen.dart';
@@ -15,9 +14,9 @@ class CustomerDashboard extends StatefulWidget {
 class _CustomerDashboardState extends State<CustomerDashboard> {
   int _selectedIndex = 0;
 
+  // Remove the CustomerMessagesScreen
   final List<Widget> _pages = [
-    _HomePage(),
-    const CustomerMessagesScreen(),
+    const _HomePage(),
     const CustomerSupportScreen(),
     const CustomerProfileScreen(),
     const CustomerSettingsScreen(),
@@ -46,9 +45,9 @@ class _CustomerDashboardState extends State<CustomerDashboard> {
         currentIndex: _selectedIndex,
         onTap: _onItemTapped,
         type: BottomNavigationBarType.fixed,
+        // Remove the Messages tab
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
-          BottomNavigationBarItem(icon: Icon(Icons.message), label: 'Messages'),
           BottomNavigationBarItem(icon: Icon(Icons.support_agent), label: 'Support'),
           BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
           BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'Settings'),

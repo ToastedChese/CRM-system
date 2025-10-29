@@ -3,9 +3,15 @@ import 'package:flutter/material.dart';
 class MessagesEmployeeScreen extends StatelessWidget {
   const MessagesEmployeeScreen({super.key});
 
+  // Helper to get a dynamic accent color for light/dark mode
+  Color _getDynamicAccentColor(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDarkMode = theme.brightness == Brightness.dark;
+    return isDarkMode ? Colors.blueAccent : theme.primaryColor;
+  }
+
   @override
   Widget build(BuildContext context) {
-    // This widget is now just the body, the Scaffold is in the main dashboard
     return _buildConversationList(context);
   }
 
@@ -61,27 +67,37 @@ class MessagesEmployeeScreen extends StatelessWidget {
     required VoidCallback onTap,
   }) {
     final theme = Theme.of(context);
-    final primaryColor = theme.primaryColor;
-    final unreadColor = theme.brightness == Brightness.dark ? Colors.white : Colors.black87;
+    final accentColor = _getDynamicAccentColor(context);
+
+    // This is the DYNAMIC color solution.
+    // It ensures the text is always visible and appropriately subdued.
+    final subduedColor = theme.brightness == Brightness.dark
+        ? Colors.grey.shade400
+        : Colors.grey.shade700;
+
+    final textColor = isRead ? subduedColor : null; // Use theme default for unread
 
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       onTap: onTap,
       leading: CircleAvatar(
         radius: 28,
-        backgroundColor: primaryColor,
+        backgroundColor: accentColor,
         child: Icon(Icons.person, color: theme.colorScheme.onPrimary, size: 30),
       ),
       title: Text(
         name,
-        style: TextStyle(fontWeight: FontWeight.bold, color: isRead ? null : unreadColor),
+        style: TextStyle(
+          fontWeight: isRead ? FontWeight.normal : FontWeight.bold,
+          color: textColor,
+        ),
       ),
       subtitle: Text(
         lastMessage,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
-          color: isRead ? theme.textTheme.bodySmall?.color : unreadColor,
+          color: textColor,
           fontWeight: isRead ? FontWeight.normal : FontWeight.bold,
         ),
       ),
@@ -93,7 +109,7 @@ class MessagesEmployeeScreen extends StatelessWidget {
             time,
             style: TextStyle(
               fontSize: 12,
-              color: isRead ? theme.textTheme.bodySmall?.color : primaryColor,
+              color: isRead ? subduedColor : accentColor, // Use subdued or accent color
               fontWeight: isRead ? FontWeight.normal : FontWeight.bold,
             ),
           ),
@@ -101,7 +117,7 @@ class MessagesEmployeeScreen extends StatelessWidget {
           if (!isRead)
             CircleAvatar(
               radius: 5,
-              backgroundColor: primaryColor,
+              backgroundColor: accentColor,
             )
           else
             const SizedBox(height: 10), // To keep alignment consistent

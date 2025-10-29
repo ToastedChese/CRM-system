@@ -16,11 +16,19 @@ class WelcomeScreen extends StatelessWidget {
     }
   }
 
+  // Helper to get a dynamic color for light/dark mode
+  Color _getDynamicColor(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDarkMode = theme.brightness == Brightness.dark;
+    return isDarkMode ? Colors.blueAccent : theme.primaryColor;
+  }
+
   @override
   Widget build(BuildContext context) {
     // Get theme data for styling that adapts to light/dark mode
     final theme = Theme.of(context);
     final textTheme = theme.textTheme;
+    final dynamicColor = _getDynamicColor(context);
 
     return Scaffold(
       body: SafeArea(
@@ -124,7 +132,7 @@ class WelcomeScreen extends StatelessWidget {
                           TextSpan(
                             text: 'Privacy Policy.',
                             style: TextStyle(
-                              color: theme.primaryColor,
+                              color: dynamicColor,
                               decoration: TextDecoration.underline,
                               fontWeight: FontWeight.bold,
                             ),
