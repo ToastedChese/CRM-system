@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 import 'package:crop_image/crop_image.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:powerlink_crm/data/supabase_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -19,8 +20,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
+  final _roleController = TextEditingController();
+  final _departmentController = TextEditingController();
+
   String? _avatarUrl;
-  Uint8List? _newAvatarBytes; // To hold the new image locally for preview
+  Uint8List? _newAvatarBytes;
+  Map<String, dynamic>? _profileData; // Holds all profile data, including type and id
+
   bool _isLoading = true;
   bool _isSaving = false;
 
@@ -30,40 +36,43 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _fetchUserProfile();
   }
 
+  // Universal fetch method
   Future<void> _fetchUserProfile() async {
     if (!mounted) return;
-    final supabaseClient = Supabase.instance.client;
-    final user = supabaseClient.auth.currentUser;
-    if (user == null) {
-      if (!mounted) return;
-      setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Error: You are not logged in.')),
-      );
-      return;
-    }
+    setState(() => _isLoading = true);
 
     try {
-      final data = await supabaseClient
-          .from('employees')
-          .select('first_name, last_name, phone, avatar_url')
-          .eq('user_id', user.id)
-          .single();
+      final data = await SupabaseService.getMyProfileData();
+      if (!mounted) return;
 
-      if (!mounted) return;
-      _nameController.text = '${data['first_name'] ?? ''} ${data['last_name'] ?? ''}'.trim();
-      _emailController.text = user.email ?? '';
-      _phoneController.text = data['phone'] ?? '';
-      _avatarUrl = data['avatar_url'];
-    } on PostgrestException catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to load profile: ${e.message}')),
-      );
+      if (data == null) {
+        final currentUserEmail = Supabase.instance.client.auth.currentUser?.email;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not find a profile for your user.')),
+        );
+        _emailController.text = currentUserEmail ?? 'No email found';
+        return;
+      }
+
+      setState(() {
+        _profileData = data;
+        _nameController.text = '${data['first_name'] ?? ''} ${data['last_name'] ?? ''}'.trim();
+        _emailController.text = data['email'] ?? Supabase.instance.client.auth.currentUser?.email ?? '';
+        _phoneController.text = data['phone'] ?? '';
+        _avatarUrl = data['avatar_url'];
+
+        // Set role or department if they exist
+        if (data.containsKey('role')) {
+          _roleController.text = data['role'] ?? '';
+        }
+        if (data.containsKey('department')) {
+          _departmentController.text = data['department'] ?? '';
+        }
+      });
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('An unexpected error occurred: $e')),
+        SnackBar(content: Text('Error fetching profile: $e')),
       );
     } finally {
       if (mounted) {
@@ -73,6 +82,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _pickAvatar() async {
+    // This logic is universal and remains the same
     final picker = ImagePicker();
     final imageFile = await picker.pickImage(
       source: ImageSource.gallery,
@@ -89,47 +99,52 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     );
 
-    if (croppedImageBytes == null) return;
+    if (croppedImageBytes == null || !mounted) return;
 
-    if (!mounted) return;
     setState(() {
       _newAvatarBytes = croppedImageBytes;
     });
   }
 
+  // Universal save method
   Future<void> _saveProfile() async {
-    if (!_formKey.currentState!.validate()) return;
-    if (!mounted) return;
+    if (!_formKey.currentState!.validate() || !mounted) return;
+    
+    if (_profileData == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Cannot save. Profile data not loaded.')),
+      );
+      return;
+    }
+
     setState(() => _isSaving = true);
 
-    final supabaseClient = Supabase.instance.client;
-    final user = supabaseClient.auth.currentUser;
+    final user = Supabase.instance.client.auth.currentUser;
     if (user == null) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Authentication error. Cannot save.')),
+        const SnackBar(content: Text('Authentication error. Please sign in again.')),
       );
       setState(() => _isSaving = false);
       return;
     }
 
     String? newImageUrl;
-
     if (_newAvatarBytes != null) {
       try {
         const fileExt = 'png';
+        // Use a unique path for each user's profile picture
         final fileName = '${user.id}/profile.$fileExt';
         final timestamp = DateTime.now().millisecondsSinceEpoch;
 
-        await supabaseClient.storage.from('avatars').remove([fileName]);
-
-        await supabaseClient.storage.from('avatars').uploadBinary(
+        await Supabase.instance.client.storage.from('avatars').remove([fileName]);
+        await Supabase.instance.client.storage.from('avatars').uploadBinary(
               fileName,
               _newAvatarBytes!,
               fileOptions: const FileOptions(cacheControl: '3600'),
             );
 
-        final baseUrl = supabaseClient.storage.from('avatars').getPublicUrl(fileName);
+        final baseUrl = Supabase.instance.client.storage.from('avatars').getPublicUrl(fileName);
         newImageUrl = '$baseUrl?t=$timestamp';
       } catch (e) {
         if (!mounted) return;
@@ -146,36 +161,56 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final firstName = nameParts.isNotEmpty ? nameParts.first : '';
     final lastName = nameParts.length > 1 ? nameParts.sublist(1).join(' ') : '';
 
-    final updates = {
+    final updates = <String, dynamic>{
       'first_name': firstName,
       'last_name': lastName,
       'phone': _phoneController.text.trim(),
       if (newImageUrl != null) 'avatar_url': newImageUrl,
     };
 
+    final userType = _profileData!['type'] as String?;
+
     try {
-      await supabaseClient.from('employees').update(updates).eq('user_id', user.id);
+      int? recordId;
+      Map<String, dynamic> result;
+
+      switch (userType) {
+        case 'employee':
+          updates['role'] = _roleController.text.trim();
+          recordId = _profileData!['employee_id'];
+          result = await SupabaseService.updateEmployee(recordId!, updates);
+          break;
+        case 'customer':
+          // Customer specific fields can be added here if needed
+          recordId = _profileData!['customer_id'];
+          result = await SupabaseService.updateCustomer(recordId!, updates);
+          break;
+        case 'manager':
+          updates['department'] = _departmentController.text.trim();
+          recordId = _profileData!['id'];
+          result = await SupabaseService.updateManager(recordId!, updates);
+          break;
+        default:
+          throw Exception('Unknown user type: $userType');
+      }
 
       if (mounted) {
         setState(() {
+          // Update local state with the saved data
+          _profileData!.addAll(result);
           if (newImageUrl != null) {
             _avatarUrl = newImageUrl;
-            _newAvatarBytes = null; 
+            _newAvatarBytes = null;
           }
         });
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Profile updated successfully!')),
         );
       }
-    } on PostgrestException catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to save profile: ${e.message}')),
-      );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('An unexpected error occurred: $e')),
+        SnackBar(content: Text('Failed to save profile: $e')),
       );
     } finally {
       if (mounted) {
@@ -189,17 +224,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _nameController.dispose();
     _emailController.dispose();
     _phoneController.dispose();
+    _roleController.dispose();
+    _departmentController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    // This build method is now universal
     ImageProvider? backgroundImage;
     if (_newAvatarBytes != null) {
       backgroundImage = MemoryImage(_newAvatarBytes!);
-    } else if (_avatarUrl != null) {
+    } else if (_avatarUrl != null && _avatarUrl!.isNotEmpty) {
       backgroundImage = NetworkImage(_avatarUrl!);
     }
+
+    final userType = _profileData?['type'] as String?;
 
     return Scaffold(
       appBar: AppBar(
@@ -267,6 +307,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       decoration: const InputDecoration(labelText: 'Phone Number', border: OutlineInputBorder(), prefixIcon: Icon(Icons.phone_outlined)),
                       keyboardType: TextInputType.phone,
                     ),
+
+                    if (userType == 'employee') ...[
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _roleController,
+                        decoration: const InputDecoration(labelText: 'Role', border: OutlineInputBorder(), prefixIcon: Icon(Icons.badge_outlined)),
+                      ),
+                    ],
+
+                    if (userType == 'manager') ...[
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _departmentController,
+                        decoration: const InputDecoration(labelText: 'Department', border: OutlineInputBorder(), prefixIcon: Icon(Icons.apartment_outlined)),
+                      ),
+                    ],
+                    
                     const SizedBox(height: 30),
                     _isSaving
                         ? const Center(child: CircularProgressIndicator())

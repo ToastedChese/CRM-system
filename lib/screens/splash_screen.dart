@@ -35,19 +35,21 @@ class _SplashScreenState extends State<SplashScreen> {
       // Session exists, so we have a user ID.
       final userId = session.user.id;
 
-      // Check the employees table to see if this user is an employee and get their role.
-      final employeeResponse = await supabase
+      final rawEmp = await supabase
           .from('employees')
-          .select('role')
-          .eq('user_id', userId)
+          .select('role, employee_id, first_name')
+          .eq('auth_user_id', userId)
+          .limit(1)
           .maybeSingle();
 
+      // If the widget got disposed in the meantime, stop.
       if (!mounted) return;
 
-      if (employeeResponse != null) {
-        // A record was found in the employees table.
-        final role = employeeResponse['role'] as String?;
-        if (role?.toLowerCase() == 'manager') {
+      if (rawEmp is Map) {
+        // Directly use the returned map for role checking.
+        final map = Map<String, dynamic>.from(rawEmp as Map);
+        final role = (map['role'] as String?)?.toLowerCase();
+        if (role == 'manager') {
           Navigator.of(context).pushReplacement(
             MaterialPageRoute(builder: (context) => const ManagerDashboard()),
           );
@@ -57,7 +59,7 @@ class _SplashScreenState extends State<SplashScreen> {
           );
         }
       } else {
-        // No record found, so they must be a customer.
+        // No employee record found; route to customer dashboard.
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (context) => const CustomerDashboard()),
         );

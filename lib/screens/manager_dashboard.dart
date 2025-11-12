@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:powerlink_crm/screens/profile_screen.dart';
 import 'package:powerlink_crm/screens/settings_screen.dart';
-import 'manager_messages_screen.dart';
+import 'messages_screen.dart';
 import 'manage_users_screen.dart';
 import 'customer_requests_screen.dart';
 
@@ -23,7 +23,7 @@ class _ManagerDashboardState extends State<ManagerDashboard> {
 
   final List<Widget> _pages = const [
     _ManagerHomePage(),
-    ManagerMessagesScreen(),
+    MessagesScreen(),
     ManageUsersScreen(),
     CustomerRequestsScreen(),
     ProfileScreen(),

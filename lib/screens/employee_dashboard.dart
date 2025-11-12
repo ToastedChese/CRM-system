@@ -4,7 +4,7 @@ import 'package:powerlink_crm/screens/gamify_screen.dart';
 import 'package:powerlink_crm/screens/voice_ai_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'profile_screen.dart';
-import 'messages_employee.dart';
+import 'messages_screen.dart';
 import 'settings_screen.dart';
 
 // Main stateful widget that acts as the navigation shell
@@ -22,7 +22,7 @@ class _EmployeeDashboardState extends State<EmployeeDashboard> {
   static const List<Widget> _pages = <Widget>[
     _DashboardHomePage(), // The main dashboard view
     ProfileScreen(),
-    MessagesEmployeeScreen(),
+    MessagesScreen(),
     VoiceAiScreen(), // Voice AI screen is now part of the main navigation
     GamifyScreen(),
     SettingsScreen(),
@@ -104,11 +104,21 @@ class _DashboardHomePageState extends State<_DashboardHomePage> {
   void initState() {
     super.initState();
     if (_user != null) {
+      // Use the actual column names used in the DB and SupabaseService:
+      // - primary key column: `employee_id`
+      // - link to auth user: `auth_user_id`
       _employeeStream = Supabase.instance.client
           .from('employees')
-          .stream(primaryKey: ['id'])
-          .eq('user_id', _user!.id)
-          .map((list) => list.isNotEmpty ? list.first : <String, dynamic>{});
+          .stream(primaryKey: ['employee_id'])
+          .eq('auth_user_id', _user.id)
+          // the realtime stream returns a List; normalize to a Map (first row or empty map)
+          .map((event) {
+            final list = event as List;
+            if (list.isNotEmpty) {
+              return Map<String, dynamic>.from(list.first as Map);
+            }
+            return <String, dynamic>{};
+          });
     }
   }
 

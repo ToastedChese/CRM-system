@@ -1,6 +1,8 @@
+import 'package:powerlink_crm/models/manager.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:powerlink_crm/models/customer.dart';
 import 'package:powerlink_crm/models/employee.dart';
+import 'package:powerlink_crm/data/supabase_service.dart';
 
 class AuthService {
   final SupabaseClient _supabase = Supabase.instance.client;
@@ -10,7 +12,7 @@ class AuthService {
   // -----------------------------------------------------
   Future<bool> testConnection() async {
     try {
-      final result = await _supabase.from('customers').select('id').limit(1);
+      await SupabaseService.customers();
       print('✅ Supabase database connection OK');
       return true;
     } on PostgrestException catch (e) {
@@ -40,8 +42,9 @@ class AuthService {
         return null;
       }
 
+      final normalizedEmail = email.trim().toLowerCase();
       final AuthResponse res = await _supabase.auth.signUp(
-        email: email,
+        email: normalizedEmail,
         password: password,
       );
 
@@ -50,23 +53,18 @@ class AuthService {
         return null;
       }
 
-      final data = await _supabase.from('customers').insert({
-        'user_id': res.user!.id,
+      final data = await SupabaseService.createCustomer({
+        'auth_user_id': res.user!.id,
         'first_name': firstName,
         'last_name': lastName,
-        'email': email,
+        'email': normalizedEmail,
         'phone': phone,
         'address': address,
         'customer_type': customerType,
-      }).select();
-
-      if (data.isEmpty) {
-        print('⚠️ Failed to insert customer profile for $email');
-        return null;
-      }
+      });
 
       print('✅ Customer registered: ${res.user!.email}');
-      return Customer.fromJson(data.first);
+      return Customer.fromJson(data);
     } on AuthException catch (e) {
       print('❌ Supabase Auth signup error: ${e.message}');
       return null;
@@ -80,7 +78,7 @@ class AuthService {
   }
 
   // -------------------------------
-  // Sign in an employee or customer
+  // Sign in an employee, manager or customer
   // -------------------------------
   Future<dynamic> signIn(String email, String password) async {
     try {
@@ -89,8 +87,9 @@ class AuthService {
         return null;
       }
 
+      final normalizedEmail = email.trim().toLowerCase();
       final AuthResponse res = await _supabase.auth.signInWithPassword(
-        email: email,
+        email: normalizedEmail,
         password: password,
       );
 
@@ -100,43 +99,82 @@ class AuthService {
       }
 
       final userId = res.user!.id;
+      print('DEBUG: user signed in, userId=$userId, email=$normalizedEmail');
 
-      // Check employees table
-      final emp = await _supabase
-          .from('employees')
-          .select('id, user_id, first_name, last_name, email, role')
-          .eq('user_id', userId)
+      // 1. Check for Manager first
+      final managerId = await SupabaseService.getMyManagerId();
+      print('DEBUG: managerId lookup returned: $managerId');
+      if (managerId != null) {
+        final managerData = await _supabase
+            .from('managers')
+            .select()
+            .eq('id', managerId)
+            .single();
+        print('DEBUG: managerData fetched: $managerData');
+        print('✅ Manager signed in: ${res.user!.email}');
+        return Manager.fromJson(managerData);
+      }
+
+      // Fallback: sometimes the managers table isn't linked by auth_user_id.
+      // Try to find a manager row by email and attach the auth user id if found.
+      final managerByEmail = await _supabase
+          .from('managers')
+          .select()
+          .eq('email', normalizedEmail)
           .maybeSingle();
+      print('DEBUG: managerByEmail lookup returned: $managerByEmail');
+      if (managerByEmail != null) {
+        // If this manager row lacks auth_user_id, update it to link the account.
+        try {
+          final managerIdFromRow = (managerByEmail['id'] is int) ? managerByEmail['id'] as int : (managerByEmail['id'] as num).toInt();
+          final updated = await _supabase
+              .from('managers')
+              .update({'auth_user_id': userId})
+              .eq('id', managerIdFromRow)
+              .select()
+              .single();
+          print('DEBUG: Updated manager row with auth_user_id: $updated');
+          print('✅ Manager signed in (by email): ${res.user!.email}');
+          return Manager.fromJson(updated);
+        } catch (e) {
+          print('DEBUG: Failed to update manager auth_user_id: $e');
+          // Fall through and continue to employee/customer checks
+        }
+      }
 
-      if (emp != null) {
+      // 2. Check for Employee
+      final empId = await SupabaseService.getMyEmployeeId();
+      print('DEBUG: employeeId lookup returned: $empId');
+      if (empId != null) {
+        final empData = await _supabase
+            .from('employees')
+            .select()
+            .eq('employee_id', empId)
+            .single();
+        print('DEBUG: empData fetched: $empData');
         print('✅ Employee signed in: ${res.user!.email}');
-        return Employee.fromJson(emp);
+        return Employee.fromJson(empData);
       }
 
-      // Check customers table
-      final cust = await _supabase
-          .from('customers')
-          .select('id, user_id, first_name, last_name, email, phone, customer_type')
-          .eq('user_id', userId)
-          .maybeSingle();
-
-      if (cust != null) {
+      // 3. Check for Customer
+      final custId = await SupabaseService.getMyCustomerId();
+      print('DEBUG: customerId lookup returned: $custId');
+      if (custId != null) {
+        final custData = await SupabaseService.customerById(custId);
+        print('DEBUG: custData fetched: $custData');
         print('✅ Customer signed in: ${res.user!.email}');
-        return Customer.fromJson(cust);
+        return Customer.fromJson(custData);
       }
 
-      // If no profile exists, create a minimal customer row
-      final inserted = await _supabase.from('customers').insert({
-        'user_id': userId,
-        'email': email,
-      }).select();
+      // 4. Fallback: If no profile exists, create a minimal customer row
+      final inserted = await SupabaseService.createCustomer({
+        'auth_user_id': userId,
+        'email': normalizedEmail,
+      });
 
-      if (inserted.isNotEmpty) {
-        print('⚠️ No profile found — created minimal customer row for $email');
-        return Customer.fromJson(inserted.first);
-      }
+      print('⚠️ No profile found — created minimal customer row for $email');
+      return Customer.fromJson(inserted);
 
-      return null;
     } on AuthException catch (e) {
       print('❌ Supabase Auth sign-in error: ${e.message}');
       return null;
@@ -148,6 +186,7 @@ class AuthService {
       return null;
     }
   }
+
 
   // -------------------------------
   // Create a new employee profile
@@ -177,23 +216,18 @@ class AuthService {
         return null;
       }
 
-      final data = await _supabase.from('employees').insert({
-        'user_id': res.user!.id,
+      final data = await SupabaseService.createEmployee({
+        'auth_user_id': res.user!.id,
         'first_name': firstName,
         'last_name': lastName,
         'email': email,
         'phone_number': phoneNumber,
         'role': role,
         'hire_date': hireDate?.toIso8601String(),
-      }).select();
-
-      if (data.isEmpty) {
-        print('⚠️ Failed to insert employee profile for $email');
-        return null;
-      }
+      });
 
       print('✅ Employee account created for $email');
-      return Employee.fromJson(data.first);
+      return Employee.fromJson(data);
     } on AuthException catch (e) {
       print('❌ Supabase Auth employee creation error: ${e.message}');
       return null;
@@ -203,7 +237,10 @@ class AuthService {
     } catch (e) {
       print('❌ Unexpected employee creation error: $e');
       return null;
-    }
+    } catch (e) {
+      print('An unexpected error occurred: $e');
+      return null;
+  }
   }
 
   // -------------------------------
