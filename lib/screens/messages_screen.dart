@@ -11,6 +11,7 @@ class MessagesScreen extends StatefulWidget {
 
 class _MessagesScreenState extends State<MessagesScreen> {
   static const Color mainBlue = Color(0xFF182D53);
+
   bool _loading = true;
   String? _error;
   List<Map<String, dynamic>> _conversations = [];
@@ -50,8 +51,13 @@ class _MessagesScreenState extends State<MessagesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    // Prefer scaffoldBackgroundColor so dark/light modes are respected
+    final scaffoldBg = theme.scaffoldBackgroundColor;
+    // use fixed mainBlue for AppBar/avatar to match brand, rest uses theme
+
     return Scaffold(
-      backgroundColor: Colors.grey[100],
+      backgroundColor: scaffoldBg,
       appBar: AppBar(
         title: const Text('Messages', style: TextStyle(color: Colors.white)),
         backgroundColor: mainBlue,
@@ -134,18 +140,14 @@ class _MessagesScreenState extends State<MessagesScreen> {
                                   leading: CircleAvatar(
                                     backgroundColor: mainBlue,
                                     foregroundColor: Colors.white,
-                                    backgroundImage:
-                                        (avatarUrl != null &&
-                                            avatarUrl!.isNotEmpty)
-                                        ? NetworkImage(avatarUrl!)
+                                    // compute image provider to satisfy null-safety and avoid '!'
+                                    backgroundImage: (avatarUrl != null && avatarUrl.isNotEmpty)
+                                        ? NetworkImage(avatarUrl)
                                         : null,
-                                    child:
-                                        (avatarUrl == null ||
-                                            avatarUrl!.isEmpty)
-                                        ? Icon(
-                                            isGroup
-                                                ? Icons.group
-                                                : Icons.person,
+                                    child: (avatarUrl?.isEmpty ?? true)
+                                        ? const Icon(
+                                            Icons.person,
+                                            color: Colors.white,
                                           )
                                         : null,
                                   ),
@@ -167,9 +169,9 @@ class _MessagesScreenState extends State<MessagesScreen> {
                                       ? null
                                       : Text(
                                           _fmtTime(ts),
-                                          style: const TextStyle(
+                                          style: TextStyle(
                                             fontSize: 12,
-                                            color: Colors.grey,
+                                            color: theme.colorScheme.onSurface.withAlpha((0.6 * 255).round()),
                                           ),
                                         ),
                                   onTap: () => Navigator.push(
@@ -338,7 +340,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
                             }
                           }),
                           secondary: CircleAvatar(
-                            backgroundColor: mainBlue.withOpacity(0.15),
+                            backgroundColor: const Color.fromARGB(38, 24, 45, 83),
                             backgroundImage: avatarUrl.isNotEmpty
                                 ? NetworkImage(avatarUrl)
                                 : null,
@@ -702,7 +704,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
                     final avatar = (m['avatar_url'] ?? '').toString();
                     return ListTile(
                       leading: CircleAvatar(
-                        backgroundColor: mainBlue.withOpacity(0.1),
+                        backgroundColor: const Color.fromARGB(26, 24, 45, 83),
                         backgroundImage: avatar.isNotEmpty
                             ? NetworkImage(avatar)
                             : null,

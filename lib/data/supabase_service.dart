@@ -42,35 +42,35 @@ class SupabaseService {
   // ------------------------------------------------------------
   // IDENTITY HELPERS
   // ------------------------------------------------------------
-  static Future<int?> getMyCustomerId() async {
-    final uid = _db.auth.currentUser?.id;
-    if (uid == null) return null;
+  static Future<int?> getMyCustomerId([String? uid]) async {
+    final userId = uid ?? _db.auth.currentUser?.id;
+    if (userId == null) return null;
     final row = await _db
         .from('customers')
         .select('customer_id')
-        .eq('auth_user_id', uid)
+        .eq('auth_user_id', userId)
         .maybeSingle();
     return row == null ? null : (row['customer_id'] as num).toInt();
   }
 
-  static Future<int?> getMyEmployeeId() async {
-    final uid = _db.auth.currentUser?.id;
-    if (uid == null) return null;
+  static Future<int?> getMyEmployeeId([String? uid]) async {
+    final userId = uid ?? _db.auth.currentUser?.id;
+    if (userId == null) return null;
     final row = await _db
         .from('employees')
         .select('employee_id')
-        .eq('auth_user_id', uid)
+        .eq('auth_user_id', userId)
         .maybeSingle();
     return row == null ? null : (row['employee_id'] as num).toInt();
   }
 
-  static Future<int?> getMyManagerId() async {
-    final uid = _db.auth.currentUser?.id;
-    if (uid == null) return null;
+  static Future<int?> getMyManagerId([String? uid]) async {
+    final userId = uid ?? _db.auth.currentUser?.id;
+    if (userId == null) return null;
     final row = await _db
         .from('managers')
         .select('id')
-        .eq('auth_user_id', uid)
+        .eq('auth_user_id', userId)
         .maybeSingle();
     return row == null ? null : (row['id'] as num).toInt();
   }
@@ -169,7 +169,7 @@ class SupabaseService {
     try {
       final raw = await _db
           .from('managers')
-          .select('id, first_name, last_name, email, department, avatar_url')
+          .select('id, first_name, last_name, email, department, phone, avatar_url')
           .eq('auth_user_id', uid);
       final res = normalizeResult(raw);
       if (res != null) {
@@ -184,7 +184,7 @@ class SupabaseService {
       try {
         final rawList = await _db
             .from('managers')
-            .select('id, first_name, last_name, email, department, avatar_url')
+            .select('id, first_name, last_name, email, department, phone, avatar_url')
             .eq('auth_user_id', uid)
             .limit(1);
         final res = normalizeResult(rawList);
@@ -237,6 +237,7 @@ class SupabaseService {
       if (data.containsKey('hire_date')) 'hire_date': data['hire_date'],
       if (data.containsKey('auth_user_id'))
         'auth_user_id': data['auth_user_id'],
+      if (data.containsKey('avatar_url')) 'avatar_url': data['avatar_url'].toString().trim(),
     };
     final res = await _db.from('employees').insert(row).select().single();
     return Map<String, dynamic>.from(res as Map);
@@ -254,6 +255,7 @@ class SupabaseService {
       if (data.containsKey('email'))
         'email': data['email'].toString().trim().toLowerCase(),
       if (data.containsKey('phone')) 'phone': data['phone'].toString().trim(),
+      if (data.containsKey('avatar_url')) 'avatar_url': data['avatar_url'].toString().trim(),
       if (data.containsKey('role')) 'role': data['role'].toString().trim(),
       if (data.containsKey('hire_date')) 'hire_date': data['hire_date'],
     };
@@ -325,6 +327,7 @@ class SupabaseService {
       if (data.containsKey('email'))
         'email': data['email'].toString().trim().toLowerCase(),
       if (data.containsKey('phone')) 'phone': data['phone'].toString().trim(),
+      if (data.containsKey('avatar_url')) 'avatar_url': data['avatar_url'].toString().trim(),
       if (data.containsKey('address'))
         'address': data['address'].toString().trim(),
       if (data.containsKey('customer_type'))
@@ -395,6 +398,8 @@ class SupabaseService {
         'email': data['email'].toString().trim().toLowerCase(),
       if (data.containsKey('department'))
         'department': data['department'].toString().trim(),
+      if (data.containsKey('phone')) 'phone': data['phone'].toString().trim(),
+      if (data.containsKey('avatar_url')) 'avatar_url': data['avatar_url'].toString().trim(),
       if (data.containsKey('role')) 'role': data['role'].toString().trim(),
     };
     final res = await _db
@@ -519,19 +524,59 @@ class SupabaseService {
     return Map<String, dynamic>.from(res as Map);
   }
 
-  static Future<void> assignTicketToEmployee(int ticketId, int employeeId) {
-    return _db
-        .from('service_tickets')
-        .update({'employee_id': employeeId, 'manager_id': null})
-        .eq('id', ticketId);
+  // ------------------------------------------------------------
+  // AVATAR LOOKUP BY AUTH USER ID (for chat participants fallback)
+  // ------------------------------------------------------------
+  static Future<String?> avatarByAuthUserId(String userId) async {
+    try {
+      final emp = await _db
+          .from('employees')
+          .select('avatar_url')
+          .eq('auth_user_id', userId)
+          .limit(1)
+          .maybeSingle();
+      final empUrl = (emp?['avatar_url'] ?? '').toString();
+      if (empUrl.isNotEmpty) return empUrl;
+    } catch (_) {}
+
+    try {
+      final mgr = await _db
+          .from('managers')
+          .select('avatar_url')
+          .eq('auth_user_id', userId)
+          .limit(1)
+          .maybeSingle();
+      final mgrUrl = (mgr?['avatar_url'] ?? '').toString();
+      if (mgrUrl.isNotEmpty) return mgrUrl;
+    } catch (_) {}
+
+    try {
+      final cust = await _db
+          .from('customers')
+          .select('avatar_url')
+          .eq('auth_user_id', userId)
+          .limit(1)
+          .maybeSingle();
+      final custUrl = (cust?['avatar_url'] ?? '').toString();
+      if (custUrl.isNotEmpty) return custUrl;
+    } catch (_) {}
+
+    return null;
   }
 
-  static Future<void> assignTicketToManager(int ticketId, int managerId) {
-    return _db
-        .from('service_tickets')
-        .update({'manager_id': managerId, 'employee_id': null})
-        .eq('id', ticketId);
-  }
+   static Future<void> assignTicketToEmployee(int ticketId, int employeeId) {
+     return _db
+         .from('service_tickets')
+         .update({'employee_id': employeeId, 'manager_id': null})
+         .eq('id', ticketId);
+   }
+
+   static Future<void> assignTicketToManager(int ticketId, int managerId) {
+     return _db
+         .from('service_tickets')
+         .update({'manager_id': managerId, 'employee_id': null})
+         .eq('id', ticketId);
+   }
 
   // ------------------------------------------------------------
   // CAMPAIGNS

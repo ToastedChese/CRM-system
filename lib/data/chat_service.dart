@@ -1,4 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart' as sp;
+import 'supabase_service.dart';
 
 class ChatService {
   static sp.SupabaseClient get _db => sp.Supabase.instance.client;
@@ -70,7 +71,23 @@ class ChatService {
         .from('conversation_participants_enriched')
         .select('conversation_id, user_id, display_name, email, avatar_url')
         .eq('conversation_id', conversationId);
-    return (res as List).cast<Map<String, dynamic>>();
+    final list = (res as List).cast<Map<String, dynamic>>();
+    // Fallback: if avatar_url is missing, try resolve via profile tables
+    for (final m in list) {
+      final current = (m['avatar_url'] ?? '').toString();
+      if (current.isEmpty) {
+        final uid = (m['user_id'] ?? '').toString();
+        if (uid.isNotEmpty) {
+          try {
+            final url = await SupabaseService.avatarByAuthUserId(uid);
+            if (url != null && url.isNotEmpty) {
+              m['avatar_url'] = url;
+            }
+          } catch (_) {}
+        }
+      }
+    }
+    return list;
   }
 
   static Future<void> addParticipant({

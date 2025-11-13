@@ -29,6 +29,21 @@ Future<void> main() async {
     anonKey: dotenv.env['SUPABASE_ANON_KEY'] ?? '',
   );
 
+  // DEBUG: print Supabase config (masked anon key) so we can verify the runtime values
+  try {
+    final supUrl = dotenv.env['SUPABASE_URL'] ?? '<missing>';
+    final anon = dotenv.env['SUPABASE_ANON_KEY'] ?? '<missing>';
+    String mask(String s) {
+      if (s == '<missing>') return s;
+      if (s.length <= 8) return '****';
+      return s.substring(0, 4) + '...' + s.substring(s.length - 4);
+    }
+    print('DEBUG: Supabase initialize called with url=$supUrl');
+    print('DEBUG: Supabase anonKey=${mask(anon)}');
+  } catch (e) {
+    print('DEBUG: Failed to print Supabase .env values: $e');
+  }
+
   // ✅ Initialize SharedPreferences for theme service
   final prefs = await SharedPreferences.getInstance();
 

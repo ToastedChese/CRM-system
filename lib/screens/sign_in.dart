@@ -6,6 +6,7 @@ import 'package:powerlink_crm/screens/manager_dashboard.dart'; // Added by Gemin
 import 'forgotten_password_screen.dart';
 import 'package:powerlink_crm/models/employee.dart';
 import 'package:powerlink_crm/models/customer.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class SignIn extends StatefulWidget {
   const SignIn({super.key});
@@ -27,55 +28,62 @@ class SignInState extends State<SignIn> {
     });
 
     try {
-      final result = await _authService.signIn(
-        emailController.text.trim(),
-        passwordController.text.trim(),
-      );
+      final emailTrim = emailController.text.trim();
+      final emailLower = emailTrim.toLowerCase();
 
-      if (!mounted) return;
+      // === 1) Auth via AuthService (centralized, diagnostic-rich) ===
+      final pwdLen = passwordController.text.length;
+      print('DEBUG: signInForm -> calling AuthService.signIn email="$emailLower" pwdLen=$pwdLen');
 
-      if (result != null) {
-        if (result is Employee) {
-          // Check for manager role and navigate accordingly
-          if (result.role != null && result.role!.toLowerCase() == 'manager') {
-            Navigator.pushAndRemoveUntil(
-              context,
-              MaterialPageRoute(builder: (context) => const ManagerDashboard()),
-              (Route<dynamic> route) => false, // Removes all previous routes
-            );
-          } else {
-            // Employee dashboard
-            Navigator.pushAndRemoveUntil(
-              context,
-              MaterialPageRoute(builder: (context) => const EmployeeDashboard()),
-              (Route<dynamic> route) => false, // Removes all previous routes
-            );
-          }
-        } else if (result is Customer) {
-          // Customer dashboard
+      final result = await _authService.signIn(emailTrim, passwordController.text);
+      print('DEBUG: signInForm -> AuthService.signIn returned: $result');
+
+      if (result == null) {
+        // sign-in failed; AuthService already printed diagnostics, show simple UI feedback
+        _showSnack('Sign-in failed. Check your email & password.');
+        return;
+      }
+
+      // If AuthService returned an Employee instance, decide between Manager/Employee
+      if (result is Employee) {
+        final roleLower = result.role.toLowerCase();
+        if (roleLower == 'manager') {
           Navigator.pushAndRemoveUntil(
             context,
-            MaterialPageRoute(builder: (context) => const CustomerDashboard()),
-            (Route<dynamic> route) => false, // Removes all previous routes
+            MaterialPageRoute(builder: (_) => const ManagerDashboard()),
+            (route) => false,
           );
+          return;
         } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Unknown user type.')),
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(builder: (_) => const EmployeeDashboard()),
+            (route) => false,
           );
+          return;
         }
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Sign-in failed. Please check your email and password.',
-            ),
-          ),
-        );
       }
+
+      // Customer
+      if (result is Customer) {
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (_) => const CustomerDashboard()),
+          (route) => false,
+        );
+        return;
+      }
+
+      // === 4) Unknown ===
+      _showSnack('Unknown user type. Ask support to check your profile.');
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Sign-in error: $e')),
-      );
+      if (e is AuthException) {
+        _showSnack(e.message);
+      } else if (e is PostgrestException) {
+        _showSnack('Database error: ${e.message}');
+      } else {
+        _showSnack('Sign-in error: $e');
+      }
     } finally {
       setState(() {
         _isLoading = false;
@@ -207,4 +215,8 @@ class SignInState extends State<SignIn> {
       ),
     );
   }
+
+  void _showSnack(String msg) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
 }
+
+// Added single-line comment for CODE-COMPLETION-TEST

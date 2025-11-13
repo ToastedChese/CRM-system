@@ -35,6 +35,43 @@ class _SplashScreenState extends State<SplashScreen> {
       // Session exists, so we have a user ID.
       final userId = session.user.id;
 
+      // Fast path: check role in user metadata (if present)
+      final metaRole = (session.user.userMetadata?['role'] as String?)?.toLowerCase();
+      if (metaRole != null && metaRole.isNotEmpty) {
+        if (metaRole == 'manager') {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (context) => const ManagerDashboard()),
+          );
+          return;
+        }
+        if (metaRole == 'employee') {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (context) => const EmployeeDashboard()),
+          );
+          return;
+        }
+        if (metaRole == 'customer') {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (context) => const CustomerDashboard()),
+          );
+          return;
+        }
+      }
+
+      // 1) Check managers table first (managers are distinct from employees)
+      final rawMgr = await supabase
+          .from('managers')
+          .select('id, auth_user_id, email')
+          .eq('auth_user_id', userId)
+          .maybeSingle();
+      if (rawMgr != null) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (context) => const ManagerDashboard()),
+        );
+        return;
+      }
+
+      // 2) Check employees
       final rawEmp = await supabase
           .from('employees')
           .select('role, employee_id, first_name')
@@ -59,10 +96,21 @@ class _SplashScreenState extends State<SplashScreen> {
           );
         }
       } else {
-        // No employee record found; route to customer dashboard.
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (context) => const CustomerDashboard()),
-        );
+        // No employee record found; check customers table and route accordingly.
+        final rawCust = await supabase
+            .from('customers')
+            .select('customer_id, email')
+            .eq('auth_user_id', userId)
+            .maybeSingle();
+
+        if (rawCust != null) {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (context) => const CustomerDashboard()),
+          );
+        } else {
+          // Fallback: no profile found; go to start so user can sign in again or create profile.
+          Navigator.of(context).pushReplacementNamed('/start');
+        }
       }
     } catch (e) {
       print('Error during splash screen redirect: $e');
