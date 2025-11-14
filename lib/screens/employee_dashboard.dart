@@ -23,10 +23,10 @@ class _EmployeeDashboardState extends State<EmployeeDashboard> {
   // List of the main pages for the dashboard
   static const List<Widget> _pages = <Widget>[
     _DashboardHomePage(), // The main dashboard view
-    ProfileScreen(),
     MessagesScreen(),
     VoiceAiScreen(), // Voice AI screen is now part of the main navigation
     GamificationScreen(), // Using the new screen
+    ProfileScreen(),
     SettingsScreen(),
   ];
 
@@ -60,11 +60,6 @@ class _EmployeeDashboardState extends State<EmployeeDashboard> {
             label: 'Home',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.person_outline),
-            activeIcon: Icon(Icons.person),
-            label: 'Profile',
-          ),
-          BottomNavigationBarItem(
             icon: Icon(Icons.message_outlined),
             activeIcon: Icon(Icons.message),
             label: 'Messages',
@@ -78,6 +73,11 @@ class _EmployeeDashboardState extends State<EmployeeDashboard> {
             icon: Icon(Icons.emoji_events_outlined),
             activeIcon: Icon(Icons.emoji_events),
             label: 'Gamify',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.person_outline),
+            activeIcon: Icon(Icons.person),
+            label: 'Profile',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.settings_outlined),
