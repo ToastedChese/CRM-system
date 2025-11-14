@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' as sp;
 import '../data/chat_service.dart';
 import 'package:powerlink_crm/services/notification_service.dart';
-import 'package:flutter/foundation.dart';
+
 
 class MessagesScreen extends StatefulWidget {
   const MessagesScreen({super.key});
@@ -14,6 +14,7 @@ class MessagesScreen extends StatefulWidget {
 class _MessagesScreenState extends State<MessagesScreen> {
   static const Color mainBlue = Color(0xFF182D53);
 
+  StreamSubscription<void>? _convosSub;
   bool _loading = true;
   String? _error;
   List<Map<String, dynamic>> _conversations = [];
@@ -21,8 +22,17 @@ class _MessagesScreenState extends State<MessagesScreen> {
   @override
   void initState() {
     super.initState();
-    _load(); // Simplified load, sync is now handled by AuthService on login
+    // Initial load
+    _load();
+    // Listen for changes
+    _convosSub = ChatService.listenConversations().listen((_) => _load());
     NotificationService().init();
+  }
+
+  @override
+  void dispose() {
+    _convosSub?.cancel();
+    super.dispose();
   }
 
   Future<void> _load() async {

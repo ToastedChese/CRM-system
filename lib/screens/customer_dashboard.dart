@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:powerlink_crm/screens/browse_products_screen.dart';
 import 'package:powerlink_crm/screens/customer_profile_screen.dart';
-import 'package:powerlink_crm/screens/customer_support_screen.dart';
+import 'package:powerlink_crm/screens/customer_rate_company_screen.dart';
 import 'package:powerlink_crm/screens/customer_settings_screen.dart';
+import 'package:powerlink_crm/screens/customer_support_screen.dart';
+import 'package:powerlink_crm/screens/my_orders_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class CustomerDashboard extends StatefulWidget {
@@ -14,7 +17,6 @@ class CustomerDashboard extends StatefulWidget {
 class _CustomerDashboardState extends State<CustomerDashboard> {
   int _selectedIndex = 0;
 
-  // Remove the CustomerMessagesScreen
   final List<Widget> _pages = [
     const _HomePage(),
     const CustomerSupportScreen(),
@@ -45,7 +47,6 @@ class _CustomerDashboardState extends State<CustomerDashboard> {
         currentIndex: _selectedIndex,
         onTap: _onItemTapped,
         type: BottomNavigationBarType.fixed,
-        // Remove the Messages tab
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
           BottomNavigationBarItem(icon: Icon(Icons.support_agent), label: 'Support'),
@@ -75,8 +76,8 @@ class _HomePageState extends State<_HomePage> {
     if (_user != null) {
       _customerStream = Supabase.instance.client
           .from('customers')
-          .stream(primaryKey: ['id'])
-          .eq('email', _user.email!)
+          .stream(primaryKey: ['customer_id'])
+          .eq('email', _user!.email!)
           .limit(1);
     }
   }
@@ -115,8 +116,11 @@ class _HomePageState extends State<_HomePage> {
         }
         if (snapshot.hasData && snapshot.data!.isNotEmpty) {
           final customerData = snapshot.data!.first;
-          final firstName = customerData['first_name'] ?? 'Friend';
-          return _buildContent(context, firstName);
+          final firstName = (customerData['first_name'] as String?)?.trim();
+          return _buildContent(
+            context,
+            (firstName?.isNotEmpty ?? false) ? firstName! : 'Friend',
+          );
         }
         return _buildContent(context, 'Friend');
       },
@@ -145,7 +149,12 @@ class _HomePageState extends State<_HomePage> {
             title: 'My Orders',
             description: 'View and track your past and ongoing orders.',
             color: dynamicColor,
-            onTap: () {},
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const MyOrdersScreen()),
+              );
+            },
           ),
           _buildActionCard(
             context,
@@ -153,7 +162,12 @@ class _HomePageState extends State<_HomePage> {
             title: 'Browse Products',
             description: 'Explore more products and services available.',
             color: dynamicColor,
-            onTap: () {},
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const BrowseProductsScreen()),
+              );
+            },
           ),
           _buildActionCard(
             context,
@@ -162,9 +176,10 @@ class _HomePageState extends State<_HomePage> {
             description: 'Provide feedback on a recent service experience.',
             color: dynamicColor,
             onTap: () {
-              showDialog(
-                context: context,
-                builder: (context) => const RatingDialog(),
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const CustomerRateCompanyScreen(),
+                ),
               );
             },
           ),
@@ -225,75 +240,6 @@ class _HomePageState extends State<_HomePage> {
         trailing: Icon(Icons.arrow_forward_ios, size: 16, color: theme.textTheme.bodySmall?.color),
         onTap: onTap,
       ),
-    );
-  }
-}
-
-class RatingDialog extends StatefulWidget {
-  const RatingDialog({Key? key}) : super(key: key);
-
-  @override
-  State<RatingDialog> createState() => _RatingDialogState();
-}
-
-class _RatingDialogState extends State<RatingDialog> {
-  int _rating = 0;
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Rate Our Service'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('Service: Initial Consultation'), // Placeholder
-          const Text('Employee: John Doe'),         // Placeholder
-          const SizedBox(height: 16),
-          const Text('Your Rating:'),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: List.generate(5, (index) {
-              return IconButton(
-                icon: Icon(
-                  index < _rating ? Icons.star : Icons.star_border,
-                  color: Colors.amber,
-                  size: 35,
-                ),
-                onPressed: () {
-                  setState(() {
-                    _rating = index + 1;
-                  });
-                },
-              );
-            }),
-          ),
-        ],
-      ),
-      actions: [
-        TextButton(
-          child: const Text('Cancel'),
-          onPressed: () {
-            Navigator.of(context).pop();
-          },
-        ),
-        ElevatedButton(
-          child: const Text('Send'),
-          onPressed: _rating > 0
-              ? () {
-                  // Here you would typically send the rating to your backend
-                  print('Feedback submitted: $_rating stars');
-                  Navigator.of(context).pop();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Thank you for your feedback!'),
-                      backgroundColor: Colors.green,
-                    ),
-                  );
-                }
-              : null, // Disable button if no rating is given
-        ),
-      ],
     );
   }
 }

@@ -1,111 +1,136 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.42.0";
+import { initializeApp, getApp, cert } from "npm:firebase-admin@12.0.0/app";
+import { getMessaging } from "npm:firebase-admin@12.0.0/messaging";
 
-// Get the FCM Server Key you stored in Supabase secrets
-const FCM_SERVER_KEY = Deno.env.get("FCM_SERVER_KEY");
+// A helper function to initialize Firebase only once, with detailed error reporting.
+function initializeFirebase() {
+  try {
+    getApp();
+    return { success: true, error: null }; // App is already initialized
+  } catch (e) {
+    try {
+      const serviceAccountString = Deno.env.get("FCM_SERVICE_ACCOUNT_JSON");
+
+      if (!serviceAccountString || serviceAccountString.trim() === "") {
+        return { success: false, error: "FCM_SERVICE_ACCOUNT_JSON secret is missing or empty." };
+      }
+
+      const serviceAccount = JSON.parse(serviceAccountString);
+      
+      initializeApp({
+        credential: cert(serviceAccount),
+      });
+
+      return { success: true, error: null };
+    } catch (initError) {
+      // This will give us a specific parsing error or initialization error.
+      return { success: false, error: `Firebase init failed: ${initError.message}` };
+    }
+  }
+}
 
 serve(async (req) => {
+  const firebaseInit = initializeFirebase();
+  if (!firebaseInit.success) {
+    // Return the detailed error message to the trigger.
+    return new Response(`Error: ${firebaseInit.error}`, { status: 500 });
+  }
+
   try {
-    // Create a Supabase client with the user's authorization
+    // Use a custom environment variable for the service role key to avoid conflicts.
     const supabaseClient = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_ANON_KEY") ?? "",
-      {
-        global: {
-          headers: { Authorization: req.headers.get("Authorization")! },
-        },
-      }
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("POWERLINK_SERVICE_ROLE_KEY")!
     );
 
-    // Extract the new message details from the trigger's payload
     const { record: newMessage } = await req.json();
-    const senderId = newMessage.sender_id;
-    const conversationId = newMessage.conversation_id;
-    const messageBody = newMessage.body;
 
-    // Find all participants in the conversation.
-    // NOTE: This assumes you have a table named 'conversation_participants'
-    // that links users to conversations. If your table has a different name,
-    // you must change it here.
+    const { conversation_id, sender_id, body } = newMessage;
+
     const { data: participants, error: partsError } = await supabaseClient
       .from("conversation_participants")
       .select("user_id")
-      .eq("conversation_id", conversationId);
+      .eq("conversation_id", conversation_id);
 
     if (partsError) throw partsError;
 
-    // Find the recipients by filtering out the original sender
     const recipientIds = participants
       .map((p) => p.user_id)
-      .filter((id) => id !== senderId);
+      .filter((id) => id !== sender_id);
 
     if (recipientIds.length === 0) {
-      console.log("No other participants in conversation to notify.");
-      return new Response("No recipients to notify", { status: 200 });
+      return new Response("ok");
     }
 
-    // Get the FCM tokens for all recipients from both the employees and managers tables
-    const { data: employeeTokens, error: empError } = await supabaseClient
+    const { data: employeeTokens } = await supabaseClient
       .from("employees")
       .select("fcm_token")
-      .in("id", recipientIds)
+      .in("auth_user_id", recipientIds)
       .not("fcm_token", "is", null);
 
-    const { data: managerTokens, error: manError } = await supabaseClient
+    const { data: managerTokens } = await supabaseClient
       .from("managers")
       .select("fcm_token")
-      .in("id", recipientIds)
+      .in("auth_user_id", recipientIds)
       .not("fcm_token", "is", null);
 
-    if (empError) throw empError;
-    if (manError) throw manError;
-
-    // Combine all the found tokens into a single list
     const allTokens = [
-      ...employeeTokens.map((t) => t.fcm_token),
-      ...managerTokens.map((t) => t.fcm_token),
-    ].filter(Boolean); // .filter(Boolean) removes any null/undefined entries
+      ...(employeeTokens?.map((t) => t.fcm_token) || []),
+      ...(managerTokens?.map((t) => t.fcm_token) || []),
+    ];
+    const uniqueTokens = [...new Set(allTokens)].filter(Boolean);
 
-    if (allTokens.length === 0) {
-        console.log("No valid FCM tokens found for any recipients.");
-        return new Response("No valid FCM tokens found for recipients", { status: 200 });
+    if (uniqueTokens.length === 0) {
+      return new Response("ok");
     }
 
-    // Prepare the notification payload to send to Firebase
-    const notificationPayload = {
-      registration_ids: allTokens, // Use registration_ids for multiple tokens
-      notification: {
-        title: "New Message", // You can customize this later
-        body: messageBody,
-        sound: "default",
-      },
-      // You can also add a 'data' payload for handling taps in the app
-      data: {
-        "conversation_id": conversationId.toString(),
+    const { data: convData } = await supabaseClient
+      .from("conversations")
+      .select("is_group, title")
+      .eq("id", conversation_id)
+      .single();
+
+    let title = "New Message";
+    if (convData?.is_group) {
+      title = convData.title || "Group Message";
+    } else {
+      const { data: senderProfile } = await supabaseClient
+        .from("employees")
+        .select("first_name, last_name")
+        .eq("auth_user_id", sender_id)
+        .single();
+      if (senderProfile) {
+        title = `${senderProfile.first_name} ${senderProfile.last_name}`;
+      } else {
+        const { data: managerProfile } = await supabaseClient
+            .from("managers")
+            .select("first_name, last_name")
+            .eq("auth_user_id", sender_id)
+            .single();
+        if (managerProfile) {
+            title = `${managerProfile.first_name} ${managerProfile.last_name}`;
+        }
       }
+    }
+
+    const messagePayload = {
+      notification: { title, body },
+      tokens: uniqueTokens,
     };
 
-    // Send the request to Firebase Cloud Messaging
-    const fcmResponse = await fetch("https://fcm.googleapis.com/fcm/send", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `key=${FCM_SERVER_KEY}`,
-      },
-      body: JSON.stringify(notificationPayload),
-    });
-
-    if (!fcmResponse.ok) {
-        const errorBody = await fcmResponse.text();
-        throw new Error(`FCM request failed: ${fcmResponse.status} ${errorBody}`);
+    const response = await getMessaging().sendEachForMulticast(messagePayload);
+    
+    if (response.failureCount > 0) {
+        response.responses.forEach(resp => {
+            if (!resp.success) {
+                console.error(`Failed to send to a token: ${resp.error}`);
+            }
+        });
     }
 
-    console.log("Successfully sent push notification to", allTokens.length, "devices.");
-    return new Response("Notification sent successfully", { status: 200 });
-
+    return new Response("ok");
   } catch (error) {
-    console.error("Error sending notification:", error);
-    return new Response(
-      `Internal Server Error: ${error.message}`, { status: 500 });
+    return new Response(`Error: ${error.message}`, { status: 500 });
   }
 });

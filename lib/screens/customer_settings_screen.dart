@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:powerlink_crm/screens/forgotten_password_screen.dart';
 import 'package:powerlink_crm/services/authentication.dart'; // Import the AuthService
 import 'package:powerlink_crm/screens/appearance_screen.dart';
 
@@ -48,7 +49,10 @@ class CustomerSettingsScreen extends StatelessWidget {
           title: 'Security',
           subtitle: 'Change your password and manage account security',
           onTap: () {
-            print("Navigate to Customer Security");
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const ForgottenPassword()),
+            );
           },
         ),
         const Divider(height: 40, thickness: 1),
@@ -59,7 +63,7 @@ class CustomerSettingsScreen extends StatelessWidget {
           subtitle: 'Sign out of your account',
           onTap: () async {
             await authService.signOut();
-            
+
             if (!context.mounted) return;
 
             // Clear all screens and push the StartScreen as the new home.

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:powerlink_crm/services/notification_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' as sp;
 import 'supabase_service.dart';
@@ -14,6 +15,35 @@ class ChatService {
         .select('id, title, is_group, created_by, created_at')
         .order('created_at', ascending: false);
     return (res as List).cast<Map<String, dynamic>>();
+  }
+
+  /// Listen for any changes that should cause the conversation list to refresh.
+  static Stream<void> listenConversations() {
+    final controller = StreamController<void>.broadcast();
+
+    // Listen for new conversations or changes to existing ones (e.g. title)
+    _db
+        .channel('public:conversations:all')
+        .onPostgresChanges(
+          event: sp.PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'conversations',
+          callback: (payload) => controller.add(null),
+        )
+        .subscribe();
+
+    // Also listen for new messages, as that should trigger a re-sort/refresh
+    _db
+        .channel('public:messages:all')
+        .onPostgresChanges(
+          event: sp.PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'messages',
+          callback: (payload) => controller.add(null),
+        )
+        .subscribe();
+
+    return controller.stream;
   }
 
   static Future<Map<String, dynamic>> conversation(int id) async {

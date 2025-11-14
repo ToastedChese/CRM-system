@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
+import '../data/supabase_service.dart';
 
-// A screen where customers can submit support requests.
 class CustomerSupportScreen extends StatefulWidget {
   const CustomerSupportScreen({super.key});
 
@@ -9,63 +9,81 @@ class CustomerSupportScreen extends StatefulWidget {
 }
 
 class _CustomerSupportScreenState extends State<CustomerSupportScreen> {
-  final _formKey = GlobalKey<FormState>();
-  final _subjectController = TextEditingController();
-  final _messageController = TextEditingController();
-  final bool _isSubmitting = false;
+  static const Color mainBlue = Color(0xFF182D53);
 
-  /*
-  // --- Database Integration Placeholder ---
-  Future<void> _submitSupportRequest() async {
-    if (!_formKey.currentState!.validate()) {
-      return; // Don't submit if the form is invalid
+  final _formKey = GlobalKey<FormState>();
+  final _subjectCtrl = TextEditingController();
+  final _messageCtrl = TextEditingController();
+
+  bool _isSubmitting = false;
+  String _selectedRole = 'employee';
+  List<Map<String, dynamic>> _assignees = [];
+  int? _selectedAssigneeId;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAssignees();
+  }
+
+  Future<void> _loadAssignees() async {
+    try {
+      if (_selectedRole == 'employee') {
+        _assignees = await SupabaseService.employeesLite();
+      } else {
+        _assignees = await SupabaseService.managersLite();
+      }
+      setState(() => _selectedAssigneeId = null);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to load: $e')));
+    }
+  }
+
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate() || _selectedAssigneeId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Complete all fields and pick assignee.')),
+      );
+      return;
     }
 
-    setState(() {
-      _isSubmitting = true;
-    });
+    setState(() => _isSubmitting = true);
+    try {
+      final customerId = await SupabaseService.getMyCustomerId();
+      if (customerId == null) {
+        throw Exception('No customer profile linked to this account.');
+      }
 
-    // TODO: Implement database call to create a new support ticket.
-    // try {
-    //   final userId = FirebaseAuth.instance.currentUser?.uid;
-    //   final userEmail = FirebaseAuth.instance.currentUser?.email;
-    //
-    //   if (userId == null) throw Exception("User not logged in");
-    //
-    //   await FirebaseFirestore.instance.collection('supportTickets').add({
-    //     'customerId': userId,
-    //     'customerEmail': userEmail,
-    //     'subject': _subjectController.text,
-    //     'message': _messageController.text,
-    //     'status': 'Open', // e.g., Open, In Progress, Closed
-    //     'createdAt': FieldValue.serverTimestamp(),
-    //   });
-    //
-    //   // Show success message and clear the form
-    //   ScaffoldMessenger.of(context).showSnackBar(
-    //     const SnackBar(content: Text('Support request submitted successfully!')),
-    //   );
-    //   _formKey.currentState!.reset();
-    //   _subjectController.clear();
-    //   _messageController.clear();
-    //
-    // } catch (e) {
-    //   // Show error message
-    //   ScaffoldMessenger.of(context).showSnackBar(
-    //     SnackBar(content: Text('Failed to submit request: $e')),
-    //   );
-    // } finally {
-    //   setState(() {
-    //     _isSubmitting = false;
-    //   });
-    // }
+      await SupabaseService.createServiceTicket(
+        customerId: customerId,
+        issueDescription: '[${_subjectCtrl.text}] ${_messageCtrl.text.trim()}',
+        employeeId: _selectedRole == 'employee' ? _selectedAssigneeId : null,
+        managerId: _selectedRole == 'manager' ? _selectedAssigneeId : null,
+      );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Support request submitted!')),
+      );
+      _formKey.currentState!.reset();
+      setState(() => _selectedAssigneeId = null);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to submit: $e')));
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
+    }
   }
-  */
 
   @override
   void dispose() {
-    _subjectController.dispose();
-    _messageController.dispose();
+    _subjectCtrl.dispose();
+    _messageCtrl.dispose();
     super.dispose();
   }
 
@@ -73,12 +91,15 @@ class _CustomerSupportScreenState extends State<CustomerSupportScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Contact Support', style: TextStyle(color: Colors.white)),
-        backgroundColor: const Color(0xFF182D53),
+        title: const Text(
+          'Contact Support',
+          style: TextStyle(color: Colors.white),
+        ),
+        backgroundColor: mainBlue,
         iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(16),
         child: Form(
           key: _formKey,
           child: Column(
@@ -88,51 +109,81 @@ class _CustomerSupportScreenState extends State<CustomerSupportScreen> {
                 'How can we help?',
                 style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
               ),
-              const SizedBox(height: 8),
-              const Text(
-                'Fill out the form below and a support agent will get back to you.',
-                style: TextStyle(fontSize: 15, color: Colors.grey),
-              ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 16),
+
               TextFormField(
-                controller: _subjectController,
+                controller: _subjectCtrl,
                 decoration: const InputDecoration(
                   labelText: 'Subject',
                   border: OutlineInputBorder(),
                 ),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please enter a subject.';
-                  }
-                  return null;
-                },
+                validator: (v) =>
+                    (v == null || v.isEmpty) ? 'Please enter a subject.' : null,
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
+
               TextFormField(
-                controller: _messageController,
+                controller: _messageCtrl,
+                maxLines: 5,
                 decoration: const InputDecoration(
                   labelText: 'Message',
                   border: OutlineInputBorder(),
-                  alignLabelWithHint: true,
                 ),
-                maxLines: 5,
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please enter your message.';
-                  }
-                  return null;
+                validator: (v) =>
+                    (v == null || v.isEmpty) ? 'Please enter a message.' : null,
+              ),
+              const SizedBox(height: 16),
+
+              DropdownButtonFormField<String>(
+                value: _selectedRole,
+                decoration: const InputDecoration(
+                  labelText: 'Assign to (role)',
+                  border: OutlineInputBorder(),
+                ),
+                items: const [
+                  DropdownMenuItem(value: 'employee', child: Text('Employee')),
+                  DropdownMenuItem(value: 'manager', child: Text('Manager')),
+                ],
+                onChanged: (v) {
+                  if (v == null) return;
+                  setState(() => _selectedRole = v);
+                  _loadAssignees();
                 },
               ),
+              const SizedBox(height: 12),
+
+              DropdownButtonFormField<int>(
+                value: _selectedAssigneeId,
+                decoration: const InputDecoration(
+                  labelText: 'Assign to',
+                  border: OutlineInputBorder(),
+                ),
+                items: _assignees.map((e) {
+                  final id = _selectedRole == 'employee'
+                      ? e['employee_id'] as int
+                      : e['id'] as int;
+                  final name =
+                      '${e['first_name'] ?? ''} ${e['last_name'] ?? ''}'.trim();
+                  return DropdownMenuItem<int>(value: id, child: Text(name));
+                }).toList(),
+                onChanged: (v) => setState(() => _selectedAssigneeId = v),
+                validator: (v) =>
+                    v == null ? 'Please select an assignee' : null,
+              ),
               const SizedBox(height: 24),
+
               ElevatedButton(
-                onPressed: _isSubmitting ? null : () {}, // Disabled when submitting, replace {} with _submitSupportRequest
+                onPressed: _isSubmitting ? null : _submit,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF182D53),
+                  backgroundColor: mainBlue,
                   padding: const EdgeInsets.symmetric(vertical: 16),
                 ),
                 child: _isSubmitting
                     ? const CircularProgressIndicator(color: Colors.white)
-                    : const Text('Submit Request', style: TextStyle(color: Colors.white)),
+                    : const Text(
+                        'Submit Request',
+                        style: TextStyle(color: Colors.white),
+                      ),
               ),
             ],
           ),
@@ -141,3 +192,4 @@ class _CustomerSupportScreenState extends State<CustomerSupportScreen> {
     );
   }
 }
+
