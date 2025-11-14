@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:powerlink_crm/screens/gamification.dart';
@@ -5,11 +6,11 @@ import 'package:powerlink_crm/screens/tasks_screen.dart';
 import 'package:powerlink_crm/screens/new_leads.dart';
 import 'package:powerlink_crm/screens/voice_ai_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../data/supabase_service.dart';
 import 'profile_screen.dart';
 import 'messages_screen.dart';
 import 'settings_screen.dart';
 
-// Main stateful widget that acts as the navigation shell
 class EmployeeDashboard extends StatefulWidget {
   const EmployeeDashboard({super.key});
 
@@ -20,18 +21,16 @@ class EmployeeDashboard extends StatefulWidget {
 class _EmployeeDashboardState extends State<EmployeeDashboard> {
   int _selectedIndex = 0;
 
-  // List of the main pages for the dashboard
   static const List<Widget> _pages = <Widget>[
-    _DashboardHomePage(), // The main dashboard view
+    _DashboardHomePage(),
     MessagesScreen(),
-    VoiceAiScreen(), // Voice AI screen is now part of the main navigation
-    GamificationScreen(), // Using the new screen
+    VoiceAiScreen(),
+    GamificationScreen(),
     ProfileScreen(),
     SettingsScreen(),
   ];
 
   void _onItemTapped(int index) {
-    // The navigation is now handled entirely by the IndexedStack.
     setState(() {
       _selectedIndex = index;
     });
@@ -44,7 +43,6 @@ class _EmployeeDashboardState extends State<EmployeeDashboard> {
         title: const Text('Employee Dashboard'),
         automaticallyImplyLeading: false,
       ),
-      // Use IndexedStack to preserve the state of each page when switching
       body: IndexedStack(
         index: _selectedIndex,
         children: _pages,
@@ -52,45 +50,38 @@ class _EmployeeDashboardState extends State<EmployeeDashboard> {
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _selectedIndex,
         onTap: _onItemTapped,
-        type: BottomNavigationBarType.fixed, // To show all labels
+        type: BottomNavigationBarType.fixed,
         items: const [
           BottomNavigationBarItem(
-            icon: Icon(Icons.dashboard_outlined),
-            activeIcon: Icon(Icons.dashboard),
-            label: 'Home',
-          ),
+              icon: Icon(Icons.dashboard_outlined),
+              activeIcon: Icon(Icons.dashboard),
+              label: 'Home'),
           BottomNavigationBarItem(
-            icon: Icon(Icons.message_outlined),
-            activeIcon: Icon(Icons.message),
-            label: 'Messages',
-          ),
+              icon: Icon(Icons.message_outlined),
+              activeIcon: Icon(Icons.message),
+              label: 'Messages'),
           BottomNavigationBarItem(
-            icon: Icon(Icons.mic_none),
-            activeIcon: Icon(Icons.mic),
-            label: 'Voice AI',
-          ),
+              icon: Icon(Icons.mic_none),
+              activeIcon: Icon(Icons.mic),
+              label: 'Voice AI'),
           BottomNavigationBarItem(
-            icon: Icon(Icons.emoji_events_outlined),
-            activeIcon: Icon(Icons.emoji_events),
-            label: 'Gamify',
-          ),
+              icon: Icon(Icons.emoji_events_outlined),
+              activeIcon: Icon(Icons.emoji_events),
+              label: 'Gamify'),
           BottomNavigationBarItem(
-            icon: Icon(Icons.person_outline),
-            activeIcon: Icon(Icons.person),
-            label: 'Profile',
-          ),
+              icon: Icon(Icons.person_outline),
+              activeIcon: Icon(Icons.person),
+              label: 'Profile'),
           BottomNavigationBarItem(
-            icon: Icon(Icons.settings_outlined),
-            activeIcon: Icon(Icons.settings),
-            label: 'Settings',
-          ),
+              icon: Icon(Icons.settings_outlined),
+              activeIcon: Icon(Icons.settings),
+              label: 'Settings'),
         ],
       ),
     );
   }
 }
 
-// The content for the "Home" tab of the dashboard
 class _DashboardHomePage extends StatefulWidget {
   const _DashboardHomePage();
 
@@ -99,46 +90,152 @@ class _DashboardHomePage extends StatefulWidget {
 }
 
 class _DashboardHomePageState extends State<_DashboardHomePage> {
-  Stream<Map<String, dynamic>>? _employeeStream;
-  final _user = Supabase.instance.client.auth.currentUser;
+  final SupabaseService _svc = SupabaseService();
+  String? _userId = Supabase.instance.client.auth.currentUser?.id;
+  int? _employeeId;
+
+  List<Map<String, dynamic>> _recentInteractions = [];
+  bool _loadingInteractions = true;
+
+  Timer? _refreshTimer;
 
   @override
   void initState() {
     super.initState();
-    if (_user != null) {
-      _employeeStream = Supabase.instance.client
+    _initEmployee();
+
+    // Auto-refresh every 10 seconds
+    _refreshTimer = Timer.periodic(
+      const Duration(seconds: 10),
+      (_) => _loadRecentInteractions(),
+    );
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _initEmployee() async {
+    final uid = _userId;
+    if (uid == null) return;
+
+    try {
+      final empResp = await Supabase.instance.client
           .from('employees')
-          .stream(primaryKey: ['employee_id'])
-          .eq('auth_user_id', _user!.id)
-          .map((event) {
-            final list = event as List;
-            if (list.isNotEmpty) {
-              return Map<String, dynamic>.from(list.first as Map);
-            }
-            return <String, dynamic>{};
-          });
+          .select('employee_id, first_name')
+          .eq('auth_user_id', uid)
+          .maybeSingle();
+
+      if (empResp != null) {
+        setState(() {
+          _employeeId = empResp['employee_id'] as int?;
+        });
+
+        await _loadRecentInteractions();
+      } else {
+        setState(() {
+          _employeeId = null;
+          _loadingInteractions = false;
+        });
+      }
+    } catch (e) {
+      print('Error fetching employee: $e');
+      setState(() {
+        _loadingInteractions = false;
+      });
+    }
+  }
+
+  Future<void> _loadRecentInteractions() async {
+    final empId = _employeeId;
+    if (empId == null) return;
+
+    try {
+      final response = await Supabase.instance.client
+          .from('employee_recentinteractions')
+          .select('*')
+          .eq('employee_id', empId)
+          .order('timestamp', ascending: false)
+          .limit(20);
+
+      if (mounted) {
+        setState(() {
+          _recentInteractions = List<Map<String, dynamic>>.from(response);
+          _loadingInteractions = false;
+        });
+      }
+    } catch (e) {
+      print("Error loading interactions: $e");
+      if (mounted) {
+        setState(() {
+          _loadingInteractions = false;
+        });
+      }
     }
   }
 
   Color _getDynamicColor(BuildContext context) {
     final theme = Theme.of(context);
-    final isDarkMode = theme.brightness == Brightness.dark;
-    return isDarkMode ? Colors.blueAccent : theme.primaryColor;
+    return theme.brightness == Brightness.dark
+        ? Colors.blueAccent
+        : theme.primaryColor;
   }
 
   String _getGreeting() {
     final hour = DateTime.now().hour;
-    if (hour < 12) {
-      return 'Good Morning';
-    } else if (hour < 17) {
-      return 'Good Afternoon';
-    } else {
-      return 'Good Evening';
-    }
+    if (hour < 12) return 'Good Morning';
+    if (hour < 17) return 'Good Afternoon';
+    return 'Good Evening';
   }
 
   String _getCurrentDate() {
     return DateFormat('MMMM d, yyyy').format(DateTime.now());
+  }
+
+  Widget _buildInteractionsList(BuildContext context) {
+    if (_loadingInteractions) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_recentInteractions.isEmpty) return const Text('No recent interactions');
+
+    return Column(
+      children: _recentInteractions.map((i) {
+        return Card(
+          elevation: 2,
+          margin: const EdgeInsets.symmetric(vertical: 4),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          child: ListTile(
+            leading: CircleAvatar(
+              child: Text(
+                (i['target_name'] ?? 'U')[0].toUpperCase(),
+              ),
+            ),
+            title: Text(i['target_name'] ?? 'Unknown'),
+            subtitle: Text(
+              i['description'] ?? '',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            trailing: Text(
+              i['timestamp'] != null
+                  ? _timeAgo(DateTime.parse(i['timestamp']))
+                  : '',
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  String _timeAgo(DateTime date) {
+    final diff = DateTime.now().difference(date);
+    if (diff.inMinutes < 1) return "now";
+    if (diff.inHours < 1) return "${diff.inMinutes}m";
+    if (diff.inHours < 24) return "${diff.inHours}h";
+    return "${diff.inDays}d";
   }
 
   @override
@@ -149,13 +246,17 @@ class _DashboardHomePageState extends State<_DashboardHomePage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildHeader(context),
+          _buildHeader(dynamicColor),
           const SizedBox(height: 20),
           _SectionHeader(
             title: 'Assigned Tasks',
             color: dynamicColor,
             onSeeAll: () {
-              Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TasksScreen()));
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const TasksScreen(),
+                ),
+              );
             },
           ),
           _buildTaskList(),
@@ -164,10 +265,14 @@ class _DashboardHomePageState extends State<_DashboardHomePage> {
             title: 'Customer Leads',
             color: dynamicColor,
             onSeeAll: () {
-              Navigator.of(context).push(MaterialPageRoute(builder: (_) => const NewLeadsScreen()));
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const NewLeadsScreen(),
+                ),
+              );
             },
           ),
-          _buildLeadsList(context),
+          _buildLeadsList(dynamicColor),
           const SizedBox(height: 20),
           _SectionHeader(title: 'Recent Interactions', color: dynamicColor),
           _buildInteractionsList(context),
@@ -176,49 +281,33 @@ class _DashboardHomePageState extends State<_DashboardHomePage> {
     );
   }
 
-  Widget _buildHeader(BuildContext context) {
-    final theme = Theme.of(context);
+  Widget _buildHeader(Color dynamicColor) {
     final greeting = _getGreeting();
     final currentDate = _getCurrentDate();
-    final dynamicColor = _getDynamicColor(context);
 
-    return StreamBuilder<Map<String, dynamic>>(
-        stream: _employeeStream,
-        builder: (context, snapshot) {
-          String firstName = '...';
-          if (snapshot.hasData && snapshot.data!.isNotEmpty) {
-            firstName = snapshot.data!['first_name'] ?? 'Employee';
-          } else if (snapshot.connectionState == ConnectionState.done) {
-            firstName = 'Employee';
-          }
-
-          return Row(
-            children: [
-              const CircleAvatar(
-                radius: 30,
-                child: Icon(Icons.person, size: 30),
+    return Row(
+      children: [
+        const CircleAvatar(
+          radius: 30,
+          child: Icon(Icons.person, size: 30),
+        ),
+        const SizedBox(width: 12),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              greeting,
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: dynamicColor,
               ),
-              const SizedBox(width: 12),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '$greeting, $firstName',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: dynamicColor,
-                    ),
-                  ),
-                  Text(
-                    'Today: $currentDate',
-                    style: theme.textTheme.bodySmall,
-                  ),
-                ],
-              ),
-            ],
-          );
-        });
+            ),
+            Text('Today: $currentDate'),
+          ],
+        ),
+      ],
+    );
   }
 
   Widget _buildTaskList() {
@@ -244,12 +333,17 @@ class _DashboardHomePageState extends State<_DashboardHomePage> {
         return Card(
           elevation: 2,
           margin: const EdgeInsets.symmetric(vertical: 4),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
           child: ListTile(
             title: Text(task['title']!),
             trailing: Text(
               task['status']!,
-              style: TextStyle(color: statusColor, fontWeight: FontWeight.w500),
+              style: TextStyle(
+                color: statusColor,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ),
         );
@@ -257,8 +351,7 @@ class _DashboardHomePageState extends State<_DashboardHomePage> {
     );
   }
 
-  Widget _buildLeadsList(BuildContext context) {
-    final dynamicColor = _getDynamicColor(context);
+  Widget _buildLeadsList(Color dynamicColor) {
     final leads = [
       {'name': 'John Smith', 'source': 'Website Form', 'status': 'New'},
       {'name': 'Jane Doe', 'source': 'Referral', 'status': 'Contacted'},
@@ -274,49 +367,16 @@ class _DashboardHomePageState extends State<_DashboardHomePage> {
             leading: Icon(Icons.person, color: dynamicColor),
             title: Text(lead['name']!),
             subtitle: Text('Source: ${lead['source']}'),
-            trailing: Text(lead['status']!, style: const TextStyle(fontWeight: FontWeight.w500)),
-          ),
-        );
-      }).toList(),
-    );
-  }
-
-  Widget _buildInteractionsList(BuildContext context) {
-    final dynamicColor = _getDynamicColor(context);
-    final interactions = [
-      {'type': 'Call', 'with': 'John Smith', 'time': '10:00 AM'},
-      {'type': 'Email', 'with': 'Jane Doe', 'time': 'Yesterday'},
-      {'type': 'Meeting', 'with': 'Team', 'time': 'Tomorrow 3 PM'},
-    ];
-
-    return Column(
-      children: interactions.map((i) {
-        IconData icon;
-        switch (i['type']) {
-          case 'Call':
-            icon = Icons.phone;
-            break;
-          case 'Email':
-            icon = Icons.email;
-            break;
-          default:
-            icon = Icons.people;
-        }
-        return Card(
-          elevation: 2,
-          margin: const EdgeInsets.symmetric(vertical: 4),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          child: ListTile(
-            leading: Icon(icon, color: dynamicColor),
-            title: Text('${i['type']} with ${i['with']}'),
-            subtitle: Text('Time: ${i['time']}'),
+            trailing: Text(
+              lead['status']!,
+              style: const TextStyle(fontWeight: FontWeight.w500),
+            ),
           ),
         );
       }).toList(),
     );
   }
 }
-
 
 class _SectionHeader extends StatelessWidget {
   const _SectionHeader({

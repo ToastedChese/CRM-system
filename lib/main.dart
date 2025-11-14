@@ -5,7 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:async';
 
-import 'package:firebase_core/firebase_core.dart'; // Import Firebase Core
+
 
 import 'package:powerlink_crm/screens/add_customer_screen.dart';
 import 'package:powerlink_crm/screens/customer_dashboard.dart';
@@ -20,7 +20,6 @@ import 'package:powerlink_crm/screens/welcome_screen.dart';
 import 'package:powerlink_crm/screens/manager_dashboard.dart';
 import 'package:powerlink_crm/services/theme_service.dart';
 import 'package:powerlink_crm/services/notification_service.dart';
-import 'package:powerlink_crm/services/fcm_service.dart'; // Import the new service
 import 'package:powerlink_crm/data/_global_subscriptions.dart';
 import 'package:powerlink_crm/data/chat_service.dart';
 
@@ -40,10 +39,7 @@ Future<void> main() async {
   await dotenv.load(fileName: ".env");
   print('DEBUG_STARTUP: after dotenv.load');
 
-  print('DEBUG_STARTUP: before Firebase.initializeApp');
-  // ✅ Initialize Firebase
-  await Firebase.initializeApp();
-  print('DEBUG_STARTUP: after Firebase.initializeApp');
+ 
 
   print('DEBUG_STARTUP: before Supabase.initialize');
   // ✅ Initialize Supabase
@@ -88,7 +84,7 @@ Future<void> main() async {
     await NotificationService().init();
 
     print('DEBUG_STARTUP: postFrameCallback - init FcmService');
-    await FcmService().init(); // Initialize FCM service
+   // await FcmService().init(); // Initialize FCM service
 
     // Also listen for auth state changes to (re)subscribe after sign-in
     try {
