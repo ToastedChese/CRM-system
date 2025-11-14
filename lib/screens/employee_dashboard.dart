@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:powerlink_crm/screens/gamify_screen.dart';
+import 'package:powerlink_crm/screens/gamification.dart';
+import 'package:powerlink_crm/screens/tasks_screen.dart';
+import 'package:powerlink_crm/screens/new_leads.dart';
 import 'package:powerlink_crm/screens/voice_ai_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'profile_screen.dart';
@@ -24,7 +26,7 @@ class _EmployeeDashboardState extends State<EmployeeDashboard> {
     ProfileScreen(),
     MessagesScreen(),
     VoiceAiScreen(), // Voice AI screen is now part of the main navigation
-    GamifyScreen(),
+    GamificationScreen(), // Using the new screen
     SettingsScreen(),
   ];
 
@@ -73,8 +75,8 @@ class _EmployeeDashboardState extends State<EmployeeDashboard> {
             label: 'Voice AI',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.games_outlined),
-            activeIcon: Icon(Icons.games),
+            icon: Icon(Icons.emoji_events_outlined),
+            activeIcon: Icon(Icons.emoji_events),
             label: 'Gamify',
           ),
           BottomNavigationBarItem(
@@ -104,14 +106,10 @@ class _DashboardHomePageState extends State<_DashboardHomePage> {
   void initState() {
     super.initState();
     if (_user != null) {
-      // Use the actual column names used in the DB and SupabaseService:
-      // - primary key column: `employee_id`
-      // - link to auth user: `auth_user_id`
       _employeeStream = Supabase.instance.client
           .from('employees')
           .stream(primaryKey: ['employee_id'])
-          .eq('auth_user_id', _user.id)
-          // the realtime stream returns a List; normalize to a Map (first row or empty map)
+          .eq('auth_user_id', _user!.id)
           .map((event) {
             final list = event as List;
             if (list.isNotEmpty) {
@@ -145,6 +143,7 @@ class _DashboardHomePageState extends State<_DashboardHomePage> {
 
   @override
   Widget build(BuildContext context) {
+    final dynamicColor = _getDynamicColor(context);
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -152,13 +151,25 @@ class _DashboardHomePageState extends State<_DashboardHomePage> {
         children: [
           _buildHeader(context),
           const SizedBox(height: 20),
-          _buildSectionTitle(context, 'Assigned Tasks'),
+          _SectionHeader(
+            title: 'Assigned Tasks',
+            color: dynamicColor,
+            onSeeAll: () {
+              Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TasksScreen()));
+            },
+          ),
           _buildTaskList(),
           const SizedBox(height: 20),
-          _buildSectionTitle(context, 'Customer Leads'),
+          _SectionHeader(
+            title: 'Customer Leads',
+            color: dynamicColor,
+            onSeeAll: () {
+              Navigator.of(context).push(MaterialPageRoute(builder: (_) => const NewLeadsScreen()));
+            },
+          ),
           _buildLeadsList(context),
           const SizedBox(height: 20),
-          _buildSectionTitle(context, 'Recent Interactions'),
+          _SectionHeader(title: 'Recent Interactions', color: dynamicColor),
           _buildInteractionsList(context),
         ],
       ),
@@ -208,21 +219,6 @@ class _DashboardHomePageState extends State<_DashboardHomePage> {
             ],
           );
         });
-  }
-
-  Widget _buildSectionTitle(BuildContext context, String title) {
-    final dynamicColor = _getDynamicColor(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
-      child: Text(
-        title,
-        style: TextStyle(
-          fontSize: 18,
-          fontWeight: FontWeight.bold,
-          color: dynamicColor,
-        ),
-      ),
-    );
   }
 
   Widget _buildTaskList() {
@@ -317,6 +313,44 @@ class _DashboardHomePageState extends State<_DashboardHomePage> {
           ),
         );
       }).toList(),
+    );
+  }
+}
+
+
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader({
+    required this.title,
+    required this.color,
+    this.onSeeAll,
+  });
+
+  final String title;
+  final Color color;
+  final VoidCallback? onSeeAll;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              title,
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color: color,
+                    fontWeight: FontWeight.w600,
+                  ),
+            ),
+          ),
+          if (onSeeAll != null)
+            TextButton(
+              onPressed: onSeeAll,
+              child: const Text('See all'),
+            ),
+        ],
+      ),
     );
   }
 }

@@ -10,6 +10,8 @@ import 'active_projects.dart';
 import 'team_performance.dart';
 import 'customer_satisfaction.dart';
 import 'new_leads.dart';
+import 'meetings_screen.dart';
+import 'project_create_screen.dart';
 
 class ManagerDashboard extends StatefulWidget {
   const ManagerDashboard({super.key});
@@ -155,6 +157,26 @@ class _ManagerHomePage extends StatelessWidget {
                 color: dynamicColor,
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const NewLeadsScreen()),
+                ),
+              ),
+              _buildKpiCard(
+                context,
+                title: 'Meetings',
+                value: 'Plan & Log',
+                icon: Icons.event_note,
+                color: dynamicColor,
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const MeetingsScreen()),
+                ),
+              ),
+               _buildKpiCard(
+                context,
+                title: 'Create Project',
+                value: 'Start a new project',
+                icon: Icons.add_circle_outline,
+                color: dynamicColor,
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const ProjectCreateScreen()),
                 ),
               ),
             ],
