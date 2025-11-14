@@ -45,6 +45,8 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSUserNotificationUsageDescription</key>
+    <string>This app uses notifications to keep you updated on new messages and task reminders.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>This app uses speech recognition to convert your speech into text.</string>
 	<key>NSMicrophoneUsageDescription</key>

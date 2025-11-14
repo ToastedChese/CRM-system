@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "540157726846",
+    "project_id": "powerlinkcrm-notifications",
+    "storage_bucket": "powerlinkcrm-notifications.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:540157726846:android:a5d0fdeaaa80e3b2fb882f",
+        "android_client_info": {
+          "package_name": "com.example.powerlink_crm"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCGF7F-7zSdi74OFS7Z4Xqn8ws5MRSxGLI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

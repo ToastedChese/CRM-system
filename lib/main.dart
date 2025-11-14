@@ -3,6 +3,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'dart:async';
 
 import 'package:powerlink_crm/screens/add_customer_screen.dart';
 import 'package:powerlink_crm/screens/customer_dashboard.dart';
@@ -16,20 +17,36 @@ import 'package:powerlink_crm/screens/visits_screen.dart';
 import 'package:powerlink_crm/screens/welcome_screen.dart';
 import 'package:powerlink_crm/screens/manager_dashboard.dart';
 import 'package:powerlink_crm/services/theme_service.dart';
+import 'package:powerlink_crm/services/notification_service.dart';
+import 'package:powerlink_crm/services/fcm_service.dart'; // Import the new service
+import 'package:powerlink_crm/data/_global_subscriptions.dart';
+import 'package:powerlink_crm/data/chat_service.dart';
+
+// New Screens from Tameron's branch
+import 'package:powerlink_crm/screens/create_task_screen.dart';
+import 'package:powerlink_crm/screens/customer_rate_company_screen.dart';
+import 'package:powerlink_crm/screens/gamification.dart';
+import 'package:powerlink_crm/screens/meetings_screen.dart';
+import 'package:powerlink_crm/screens/project_create_screen.dart';
+import 'package:powerlink_crm/screens/tasks_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  print('DEBUG_STARTUP: before dotenv.load');
   // ✅ Load .env
   await dotenv.load(fileName: ".env");
+  print('DEBUG_STARTUP: after dotenv.load');
 
+  print('DEBUG_STARTUP: before Supabase.initialize');
   // ✅ Initialize Supabase
   await Supabase.initialize(
     url: dotenv.env['SUPABASE_URL'] ?? '',
     anonKey: dotenv.env['SUPABASE_ANON_KEY'] ?? '',
   );
+  print('DEBUG_STARTUP: after Supabase.initialize');
 
-  // DEBUG: print Supabase config (masked anon key) so we can verify the runtime values
+  print('DEBUG: Supabase config (masked anon key) so we can verify the runtime values');
   try {
     final supUrl = dotenv.env['SUPABASE_URL'] ?? '<missing>';
     final anon = dotenv.env['SUPABASE_ANON_KEY'] ?? '<missing>';
@@ -44,15 +61,165 @@ Future<void> main() async {
     print('DEBUG: Failed to print Supabase .env values: $e');
   }
 
+  print('DEBUG_STARTUP: before SharedPreferences.getInstance');
   // ✅ Initialize SharedPreferences for theme service
   final prefs = await SharedPreferences.getInstance();
+  print('DEBUG_STARTUP: after SharedPreferences.getInstance');
 
+  print('DEBUG_STARTUP: before runApp');
   runApp(
     ChangeNotifierProvider(
       create: (context) => ThemeService(prefs),
       child: const PowerLinkCRM(),
     ),
   );
+  print('DEBUG_STARTUP: after runApp');
+
+  // Initialize services after app start so they do not block splash
+  WidgetsBinding.instance.addPostFrameCallback((_) async {
+    print('DEBUG_STARTUP: postFrameCallback - init NotificationService');
+    await NotificationService().init();
+
+    print('DEBUG_STARTUP: postFrameCallback - init FcmService');
+    await FcmService().init(); // Initialize FCM service
+
+    // Subscribe to global message inserts to deliver notifications and persist them
+    try {
+      final me = Supabase.instance.client.auth.currentUser?.id;
+      if (me != null) {
+        print('DEBUG_STARTUP: subscribing to global message inserts for notifications');
+        // Subscribe and keep the channel reference to prevent GC (store in a static variable)
+        GlobalSubscriptions.subscribeAllMessages((row) async {
+          try {
+            final convId = (row['conversation_id'] ?? 0) as int;
+            final senderId = (row['sender_id'] ?? '').toString();
+            if (senderId == me) return; // don't notify sender
+
+            // Only notify if current user is participant in the conversation
+            final isPart = await ChatService.isParticipant(convId, me);
+            if (!isPart) return;
+
+            final body = (row['body'] ?? '').toString();
+
+            // Get sender display name via participants view
+            final parts = await ChatService.participants(convId);
+            final other = parts.firstWhere(
+                (m) => (m['user_id'] as String?) == senderId,
+                orElse: () => parts.isNotEmpty ? parts.first : {});
+            final title = (other['display_name'] ?? other['email'] ?? 'Message').toString();
+
+            // show notification and persist
+            NotificationService().showNotification(
+              id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
+              title: title,
+              body: body,
+            );
+            NotificationService().addRecentNotification(title: title, body: body);
+          } catch (e) {
+            print('DEBUG: global message handler error: $e');
+          }
+        });
+      }
+    } catch (e) {
+      print('DEBUG: failed to subscribe to global messages: $e');
+    }
+
+    // Also listen for auth state changes to (re)subscribe after sign-in
+    try {
+      Supabase.instance.client.auth.onAuthStateChange.listen((data) async {
+        final event = data.event;
+        final session = data.session;
+        print('DEBUG: auth state change event=$event');
+        if (session != null) {
+          final uid = session.user.id;
+          print('DEBUG: auth state change - user signed in uid=$uid');
+          // Ensure we have a subscription for this new user
+          GlobalSubscriptions.subscribeAllMessages((row) async {
+            try {
+              final convId = (row['conversation_id'] ?? 0) as int;
+              final senderId = (row['sender_id'] ?? '').toString();
+              if (senderId == uid) return;
+              final isPart = await ChatService.isParticipant(convId, uid);
+              if (!isPart) return;
+              final body = (row['body'] ?? '').toString();
+              final parts = await ChatService.participants(convId);
+              final other = parts.firstWhere(
+                  (m) => (m['user_id'] as String?) == senderId,
+                  orElse: () => parts.isNotEmpty ? parts.first : {});
+              final title = (other['display_name'] ?? other['email'] ?? 'Message').toString();
+              NotificationService().showNotification(
+                id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
+                title: title,
+                body: body,
+              );
+              NotificationService().addRecentNotification(title: title, body: body);
+            } catch (e) {
+              print('DEBUG: auth-listener global message handler error: $e');
+            }
+          });
+        }
+      });
+    } catch (e) {
+      print('DEBUG: failed to attach auth state listener: $e');
+    }
+
+    // Start global poller as a fallback in case realtime doesn't deliver
+    try {
+      _GlobalPoller.start();
+    } catch (e) {
+      print('DEBUG: failed to start GlobalPoller: $e');
+    }
+  });
+}
+
+// Global in-memory state for polling fallback
+class _GlobalPoller {
+  static Timer? _timer;
+  static final Map<int, int> _lastMessageIdByConv = {};
+
+  static void start() {
+    _timer ??= Timer.periodic(const Duration(seconds: 4), (_) async {
+      try {
+        final me = Supabase.instance.client.auth.currentUser?.id;
+        if (me == null) return;
+        final convs = await ChatService.myConversations();
+        for (final c in convs) {
+          final convId = (c['id'] as int);
+          final last = await ChatService.lastMessage(convId);
+          if (last == null) continue;
+          final lastId = (last['id'] is int) ? last['id'] as int : int.tryParse(last['id'].toString()) ?? 0;
+          final prev = _lastMessageIdByConv[convId] ?? 0;
+          if (lastId > prev) {
+            _lastMessageIdByConv[convId] = lastId;
+            final senderId = (last['sender_id'] ?? '').toString();
+            if (senderId != me) {
+              final parts = await ChatService.participants(convId);
+              final other = parts.firstWhere((m) => (m['user_id'] as String?) == senderId, orElse: () => parts.isNotEmpty ? parts.first : {});
+              final title = (other['display_name'] ?? other['email'] ?? 'Message').toString();
+              final body = (last['body'] ?? '').toString();
+              print('DEBUG: GlobalPoller detected new message conv=$convId id=$lastId');
+              NotificationService().showNotification(
+                id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
+                title: title,
+                body: body,
+              );
+              NotificationService().addRecentNotification(title: title, body: body);
+            }
+          }
+        }
+      } catch (e) {
+        print('DEBUG: GlobalPoller error: $e');
+      }
+    });
+    print('DEBUG: GlobalPoller started');
+  }
+
+  static void stop() {
+    _timer?.cancel();
+    _timer = null;
+    _lastMessageIdByConv.clear();
+    print('DEBUG: GlobalPoller stopped');
+  }
 }
 
 class PowerLinkCRM extends StatelessWidget {
@@ -149,6 +316,13 @@ class PowerLinkCRM extends StatelessWidget {
             '/visits': (context) => const VisitsScreen(),
             '/helpChat': (context) => const HelpChatScreen(),
             '/settings': (context) => const SettingsScreen(),
+            // Routes for new screens
+            '/createTask': (context) => const CreateTaskScreen(employeeId: 0), // Placeholder employeeId
+            '/rateCompany': (context) => const CustomerRateCompanyScreen(),
+            '/gamification': (context) => const GamificationScreen(),
+            '/meetings': (context) => const MeetingsScreen(),
+            '/createProject': (context) => const ProjectCreateScreen(),
+            '/tasks': (context) => const TasksScreen(),
           },
         );
       },

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:powerlink_crm/screens/forgotten_password_screen.dart';
+import 'package:powerlink_crm/screens/notification_settings_screen.dart';
 import 'package:powerlink_crm/services/authentication.dart'; // Import the AuthService
 import 'appearance_screen.dart';
 
@@ -18,7 +20,10 @@ class SettingsScreen extends StatelessWidget {
           title: 'Notifications',
           subtitle: 'Manage push notifications and email alerts',
           onTap: () {
-            print("Navigate to Notifications");
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const NotificationSettingsScreen()),
+            );
           },
         ),
         _buildSettingsTile(
@@ -37,9 +42,12 @@ class SettingsScreen extends StatelessWidget {
           context,
           icon: Icons.security_outlined,
           title: 'Security',
-          subtitle: 'Change your password and manage 2FA',
+          subtitle: 'Change your password',
           onTap: () {
-            print("Navigate to Security Settings");
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const ForgottenPassword()),
+            );
           },
         ),
         const Divider(height: 40, thickness: 1),

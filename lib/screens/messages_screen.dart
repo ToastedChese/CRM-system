@@ -2,6 +2,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' as sp;
 import '../data/chat_service.dart';
+import 'package:powerlink_crm/services/notification_service.dart';
+import 'package:flutter/foundation.dart';
 
 class MessagesScreen extends StatefulWidget {
   const MessagesScreen({super.key});
@@ -20,6 +22,8 @@ class _MessagesScreenState extends State<MessagesScreen> {
   void initState() {
     super.initState();
     _load();
+    // Initialize notification service
+    NotificationService().init();
   }
 
   Future<void> _load() async {
@@ -41,12 +45,10 @@ class _MessagesScreenState extends State<MessagesScreen> {
     final now = DateTime.now();
     final sameDay =
         dt.year == now.year && dt.month == now.month && dt.day == now.day;
-    if (sameDay) {
-      final hh = dt.hour.toString().padLeft(2, '0');
-      final mm = dt.minute.toString().padLeft(2, '0');
-      return '$hh:$mm';
-    }
-    return '${dt.month}/${dt.day}';
+    final hh = dt.hour.toString().padLeft(2, '0');
+    final mm = dt.minute.toString().padLeft(2, '0');
+    if (sameDay) return '$hh:$mm';
+    return '${dt.month}/${dt.day} $hh:$mm';
   }
 
   @override
@@ -409,17 +411,22 @@ class _ConversationScreenState extends State<ConversationScreen> {
 
   final _sendCtrl = TextEditingController();
   sp.RealtimeChannel? _channel;
+  final _scrollController = ScrollController();
+  Timer? _pollTimer;
 
   @override
   void initState() {
     super.initState();
     _prime();
+    // Initialize notification service
+    NotificationService().init();
   }
 
   @override
   void dispose() {
     _sendCtrl.dispose();
     _channel?.unsubscribe();
+    _pollTimer?.cancel();
     super.dispose();
   }
 
@@ -442,8 +449,100 @@ class _ConversationScreenState extends State<ConversationScreen> {
 
       _channel = ChatService.subscribeMessages(
         conversationId: widget.conversationId,
-        onInsert: (row) => setState(() => _messages.add(row)),
+        onInsert: (row) async {
+          setState(() => _messages.add(row));
+
+          // Scroll to bottom after a short delay so the newly added message is visible
+          try {
+            await Future.delayed(const Duration(milliseconds: 50));
+            if (_scrollController.hasClients) {
+              _scrollController.animateTo(
+                _scrollController.position.maxScrollExtent + 100,
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeOut,
+              );
+            }
+          } catch (_) {}
+
+          // Show local notification for incoming messages from others
+          final me = sp.Supabase.instance.client.auth.currentUser?.id ?? '';
+          final senderId = (row['sender_id'] ?? '').toString();
+          if (senderId != me) {
+            final senderName = _members.firstWhere(
+                  (m) => (m['user_id'] ?? '') == senderId,
+                  orElse: () => {'display_name': 'Someone'},
+                )['display_name'] ?? 'Someone';
+            final body = (row['body'] ?? '').toString();
+
+            // create a short title and body
+            final title = senderName.toString();
+            NotificationService().showNotification(
+              id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
+              title: title,
+              body: body,
+            );
+
+            // add to recent notifications list
+            NotificationService().addRecentNotification(
+              title: title,
+              body: body,
+            );
+          }
+        },
       );
+
+      // Start polling every 2 seconds to fetch missing messages as a fallback
+      _pollTimer?.cancel();
+      _pollTimer = Timer.periodic(const Duration(seconds: 2), (t) async {
+        try {
+          final msgs = await ChatService.messages(widget.conversationId, limit: 200);
+          if (msgs.isEmpty) return;
+          // Merge any new messages by id
+          final existingIds = _messages.map((m) => m['id'].toString()).toSet();
+          final newOnes = <Map<String, dynamic>>[];
+          for (final m in msgs) {
+            final idStr = m['id'].toString();
+            if (!existingIds.contains(idStr)) {
+              newOnes.add(m);
+            }
+          }
+          if (newOnes.isNotEmpty) {
+            setState(() {
+              _messages.addAll(newOnes);
+            });
+            // Scroll to bottom
+            await Future.delayed(const Duration(milliseconds: 60));
+            if (_scrollController.hasClients) {
+              _scrollController.animateTo(
+                _scrollController.position.maxScrollExtent + 100,
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeOut,
+              );
+            }
+
+            // Notify for incoming messages that aren't from me
+            final me = sp.Supabase.instance.client.auth.currentUser?.id ?? '';
+            for (final nm in newOnes) {
+              final senderId = (nm['sender_id'] ?? '').toString();
+              if (senderId != me) {
+                final parts = await ChatService.participants(widget.conversationId);
+                final other = parts.firstWhere((m) => (m['user_id'] as String?) == senderId, orElse: () => parts.isNotEmpty ? parts.first : {});
+                final title = (other['display_name'] ?? other['email'] ?? 'Message').toString();
+                final body = (nm['body'] ?? '').toString();
+                NotificationService().showNotification(
+                  id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
+                  title: title,
+                  body: body,
+                );
+                NotificationService().addRecentNotification(title: title, body: body);
+              }
+            }
+          }
+        } catch (e) {
+          // swallow and log
+          print('DEBUG: Conversation poll error: $e');
+        }
+      });
     } catch (e) {
       _error = e.toString();
     }
@@ -497,6 +596,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
                       vertical: 8,
                       horizontal: 12,
                     ),
+                    controller: _scrollController,
                     itemCount: _messages.length,
                     itemBuilder: (_, i) {
                       final m = _messages[i];
@@ -592,15 +692,20 @@ class _ConversationScreenState extends State<ConversationScreen> {
                 ),
               ],
             ),
+      // Debug helper: manual poll trigger
+      floatingActionButton: _debugFab(),
     );
   }
 
   String _fmtTime(String iso) {
     final dt = DateTime.tryParse(iso);
     if (dt == null) return '';
+    final now = DateTime.now();
+    final sameDay = dt.year == now.year && dt.month == now.month && dt.day == now.day;
     final hh = dt.hour.toString().padLeft(2, '0');
     final mm = dt.minute.toString().padLeft(2, '0');
-    return '$hh:$mm';
+    if (sameDay) return '$hh:$mm';
+    return '${dt.month}/${dt.day} $hh:$mm';
   }
 
   Future<void> _send() async {
@@ -608,10 +713,20 @@ class _ConversationScreenState extends State<ConversationScreen> {
     if (text.isEmpty) return;
     _sendCtrl.clear();
     try {
-      await ChatService.sendMessage(
+      final sent = await ChatService.sendMessage(
         conversationId: widget.conversationId,
         body: text,
       );
+
+      // Immediately append the returned message to the list and scroll to bottom
+      setState(() {
+        _messages.add(sent);
+      });
+      await Future.delayed(const Duration(milliseconds: 80));
+      _scrollController.jumpTo(_scrollController.position.maxScrollExtent + 100);
+
+      print('DEBUG: Message sent and appended: $sent');
+      // no notification for sender
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -753,5 +868,33 @@ class _ConversationScreenState extends State<ConversationScreen> {
         context,
       ).showSnackBar(SnackBar(content: Text('Add failed: $e')));
     }
+  }
+
+  // Debug helper: manual poll trigger
+  Widget _debugFab() {
+    if (!kDebugMode) return const SizedBox.shrink();
+    return FloatingActionButton.extended(
+      label: const Text('Poll'),
+      icon: const Icon(Icons.refresh),
+      onPressed: () async {
+        try {
+          print('DEBUG: Manual poll requested');
+          final msgs = await ChatService.messages(widget.conversationId, limit: 200);
+          print('DEBUG: Manual poll returned ${msgs.length} messages');
+          final existingIds = _messages.map((m) => m['id'].toString()).toSet();
+          final newOnes = msgs.where((m) => !existingIds.contains(m['id'].toString())).toList();
+          if (newOnes.isNotEmpty) {
+            setState(() {
+              _messages.addAll(newOnes);
+            });
+            await Future.delayed(const Duration(milliseconds: 80));
+            if (_scrollController.hasClients) _scrollController.jumpTo(_scrollController.position.maxScrollExtent + 100);
+            print('DEBUG: Manual poll appended ${newOnes.length} new messages');
+          }
+        } catch (e) {
+          print('DEBUG: Manual poll error: $e');
+        }
+      },
+    );
   }
 }

@@ -191,7 +191,35 @@ class ChatService {
         .insert(row)
         .select('id, conversation_id, sender_id, body, attachments, created_at')
         .single();
-    return Map<String, dynamic>.from(res as Map);
+
+    final map = Map<String, dynamic>.from(res as Map);
+    // DEBUG: log the server-returned message row
+    try {
+      print('DEBUG: ChatService.sendMessage returned: $map');
+    } catch (_) {}
+    return map;
+  }
+
+  /// Subscribe to ALL message inserts (no filter). Caller must filter as needed.
+  static sp.RealtimeChannel subscribeAllMessages({
+    required void Function(Map<String, dynamic> newRow) onInsert,
+  }) {
+    final channel = _db.channel('messages_global');
+    channel.onPostgresChanges(
+      event: sp.PostgresChangeEvent.insert,
+      schema: 'public',
+      table: 'messages',
+      callback: (payload) {
+        final r = Map<String, dynamic>.from(payload.newRecord);
+        // DEBUG: log global incoming message row
+        try {
+          print('DEBUG: Global message insert received: $r');
+        } catch (_) {}
+        onInsert(r);
+      },
+    );
+    channel.subscribe();
+    return channel;
   }
 
   static sp.RealtimeChannel subscribeMessages({
@@ -208,10 +236,35 @@ class ChatService {
         column: 'conversation_id',
         value: conversationId.toString(),
       ),
-      callback: (payload) =>
-          onInsert(Map<String, dynamic>.from(payload.newRecord)),
+      callback: (payload) {
+        final r = Map<String, dynamic>.from(payload.newRecord);
+        // DEBUG: log per-conversation incoming message row
+        try {
+          print('DEBUG: Conversation $conversationId insert: $r');
+        } catch (_) {}
+        onInsert(r);
+      },
     );
     channel.subscribe();
     return channel;
+  }
+
+  /// Return true if the supplied userId is a participant in the conversation.
+  static Future<bool> isParticipant(int conversationId, String userId) async {
+    try {
+      final res = await _db
+          .from('conversation_participants')
+          .select('user_id')
+          .eq('conversation_id', conversationId)
+          .eq('user_id', userId)
+          .limit(1)
+          .maybeSingle();
+      final ok = res != null;
+      print('DEBUG: isParticipant conv=$conversationId user=$userId => $ok');
+      return ok;
+    } catch (e) {
+      print('DEBUG: isParticipant error: $e');
+      return false;
+    }
   }
 }
