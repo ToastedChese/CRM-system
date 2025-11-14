@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:powerlink_crm/screens/forgotten_password_screen.dart';
 import 'package:powerlink_crm/screens/notification_settings_screen.dart';
 import 'package:powerlink_crm/services/authentication.dart'; // Import the AuthService
+import 'package:powerlink_crm/services/notification_service.dart'; // Import the NotificationService
 import 'appearance_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -57,6 +58,9 @@ class SettingsScreen extends StatelessWidget {
           title: 'Logout',
           subtitle: 'Sign out of your account',
           onTap: () async {
+            // Clear recent notifications before signing out to ensure no data leaks between sessions.
+            await NotificationService().clearRecentNotifications();
+
             await authService.signOut();
             
             if (!context.mounted) return;

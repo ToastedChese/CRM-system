@@ -21,12 +21,12 @@ class _MessagesScreenState extends State<MessagesScreen> {
   @override
   void initState() {
     super.initState();
-    _load();
-    // Initialize notification service
+    _load(); // Simplified load, sync is now handled by AuthService on login
     NotificationService().init();
   }
 
   Future<void> _load() async {
+    if (!mounted) return;
     setState(() {
       _loading = true;
       _error = null;
@@ -36,7 +36,11 @@ class _MessagesScreenState extends State<MessagesScreen> {
     } catch (e) {
       _error = e.toString();
     }
-    if (mounted) setState(() => _loading = false);
+    if (mounted) {
+      setState(() {
+        _loading = false;
+      });
+    }
   }
 
   String _fmtTime(String iso) {
@@ -91,9 +95,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
                         final isGroup = (c['is_group'] as bool?) ?? false;
 
                         return FutureBuilder<List<Map<String, dynamic>>>(
-                          future: isGroup
-                              ? ChatService.participants(c['id'] as int)
-                              : ChatService.participants(c['id'] as int),
+                          future: ChatService.participants(c['id'] as int),
                           builder: (ctx, snapParts) {
                             String titleText = 'Group';
                             String? avatarUrl;
@@ -103,27 +105,11 @@ class _MessagesScreenState extends State<MessagesScreen> {
                                   ? t!
                                   : 'Group';
                             } else if (snapParts.hasData) {
-                              final uid = sp
-                                  .Supabase
-                                  .instance
-                                  .client
-                                  .auth
-                                  .currentUser
-                                  ?.id;
-                              final others = snapParts.data!.where(
-                                (m) => m['user_id'] != uid,
-                              );
-                              final other = others.isNotEmpty
-                                  ? others.first
-                                  : (snapParts.data!.isNotEmpty
-                                        ? snapParts.data!.first
-                                        : null);
+                              final uid = sp.Supabase.instance.client.auth.currentUser?.id;
+                              final others = snapParts.data!.where((m) => m['user_id'] != uid);
+                              final other = others.isNotEmpty ? others.first : (snapParts.data!.isNotEmpty ? snapParts.data!.first : null);
                               if (other != null) {
-                                titleText =
-                                    (other['display_name'] ??
-                                            other['email'] ??
-                                            'Direct Message')
-                                        .toString();
+                                titleText = (other['display_name'] ?? other['email'] ?? 'Direct Message').toString();
                                 avatarUrl = (other['avatar_url'] as String?);
                               } else {
                                 titleText = 'Direct Message';
@@ -133,57 +119,35 @@ class _MessagesScreenState extends State<MessagesScreen> {
                             return FutureBuilder<Map<String, dynamic>?>(
                               future: ChatService.lastMessage(c['id'] as int),
                               builder: (ctx, snapLast) {
-                                final subtitle = (snapLast.data?['body'] ?? '')
-                                    .toString();
-                                final ts = (snapLast.data?['created_at'] ?? '')
-                                    .toString();
+                                final subtitle = (snapLast.data?['body'] ?? '').toString();
+                                final ts = (snapLast.data?['created_at'] ?? '').toString();
 
                                 return ListTile(
                                   leading: CircleAvatar(
                                     backgroundColor: mainBlue,
                                     foregroundColor: Colors.white,
-                                    // compute image provider to satisfy null-safety and avoid '!'
-                                    backgroundImage: (avatarUrl != null && avatarUrl.isNotEmpty)
-                                        ? NetworkImage(avatarUrl)
-                                        : null,
-                                    child: (avatarUrl?.isEmpty ?? true)
-                                        ? const Icon(
-                                            Icons.person,
-                                            color: Colors.white,
-                                          )
-                                        : null,
+                                    backgroundImage: (avatarUrl != null && avatarUrl.isNotEmpty) ? NetworkImage(avatarUrl) : null,
+                                    child: (avatarUrl?.isEmpty ?? true) ? const Icon(Icons.person, color: Colors.white) : null,
                                   ),
-                                  title: Text(
-                                    titleText,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
+                                  title: Text(titleText, maxLines: 1, overflow: TextOverflow.ellipsis),
                                   subtitle: Text(
-                                    subtitle.isEmpty
-                                        ? (isGroup
-                                              ? 'Tap to view'
-                                              : 'Start the conversation')
-                                        : subtitle,
+                                    subtitle.isEmpty ? (isGroup ? 'Tap to view' : 'Start the conversation') : subtitle,
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                   ),
-                                  trailing: ts.isEmpty
-                                      ? null
-                                      : Text(
-                                          _fmtTime(ts),
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: theme.colorScheme.onSurface.withAlpha((0.6 * 255).round()),
-                                          ),
+                                  trailing: ts.isEmpty ? null : Text(_fmtTime(ts), style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface.withAlpha((0.6 * 255).round()))),
+                                  onTap: () async {
+                                    await Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) => ConversationScreen(
+                                          conversationId: c['id'] as int,
                                         ),
-                                  onTap: () => Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => ConversationScreen(
-                                        conversationId: c['id'] as int,
                                       ),
-                                    ),
-                                  ),
+                                    );
+                                    // After returning from the conversation, refresh the list.
+                                    _load();
+                                  },
                                 );
                               },
                             );
@@ -203,13 +167,14 @@ class _MessagesScreenState extends State<MessagesScreen> {
     try {
       final row = await ChatService.getOrCreateDm(otherUserId: picked.first);
       if (!mounted) return;
-      await _load();
-      Navigator.push(
+      // Navigate and then refresh when the user comes back.
+      await Navigator.push(
         context,
         MaterialPageRoute(
           builder: (_) => ConversationScreen(conversationId: row['id'] as int),
         ),
       );
+      _load();
     } catch (e) {
       _snack('DM failed: $e');
     }
@@ -224,37 +189,24 @@ class _MessagesScreenState extends State<MessagesScreen> {
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Group name'),
-        content: TextField(
-          controller: titleCtrl,
-          decoration: const InputDecoration(hintText: 'e.g. Sales Team'),
-        ),
+        content: TextField(controller: titleCtrl, decoration: const InputDecoration(hintText: 'e.g. Sales Team')),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Create'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Create')),
         ],
       ),
     );
     if (ok != true) return;
 
     try {
-      final row = await ChatService.createGroup(
-        title: titleCtrl.text.trim(),
-        participantUserIds: picked,
-      );
+      final row = await ChatService.createGroup(title: titleCtrl.text.trim(), participantUserIds: picked);
       if (!mounted) return;
-      await _load();
-      Navigator.push(
+      // Navigate and then refresh when the user comes back.
+      await Navigator.push(
         context,
-        MaterialPageRoute(
-          builder: (_) => ConversationScreen(conversationId: row['id'] as int),
-        ),
+        MaterialPageRoute(builder: (_) => ConversationScreen(conversationId: row['id'] as int)),
       );
+      _load();
     } catch (e) {
       _snack('Create group failed: $e');
     }
@@ -280,12 +232,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
         }
 
         return Padding(
-          padding: EdgeInsets.only(
-            left: 16,
-            right: 16,
-            top: 12,
-            bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
-          ),
+          padding: EdgeInsets.only(left: 16, right: 16, top: 12, bottom: MediaQuery.of(ctx).viewInsets.bottom + 16),
           child: StatefulBuilder(
             builder: (ctx, setLocal) => Column(
               mainAxisSize: MainAxisSize.min,
@@ -294,27 +241,18 @@ class _MessagesScreenState extends State<MessagesScreen> {
                   controller: searchCtrl,
                   onChanged: (_) {
                     _debouncer?.cancel();
-                    _debouncer = Timer(
-                      const Duration(milliseconds: 250),
-                      () async {
-                        await doSearch();
-                        setLocal(() {});
-                      },
-                    );
+                    _debouncer = Timer(const Duration(milliseconds: 250), () async {
+                      await doSearch();
+                      setLocal(() {});
+                    });
                   },
-                  decoration: const InputDecoration(
-                    labelText: 'Search people',
-                    prefixIcon: Icon(Icons.search),
-                  ),
+                  decoration: const InputDecoration(labelText: 'Search people', prefixIcon: Icon(Icons.search)),
                 ),
                 const SizedBox(height: 8),
                 if (results.isEmpty)
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 24),
-                    child: Text(
-                      'Type a name or email to search',
-                      style: TextStyle(color: Colors.grey[600]),
-                    ),
+                    child: Text('Type a name or email to search', style: TextStyle(color: Colors.grey[600])),
                   )
                 else
                   Flexible(
@@ -324,9 +262,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
                       itemBuilder: (_, i) {
                         final r = results[i];
                         final id = (r['user_id'] ?? '').toString();
-                        final dn =
-                            (r['display_name'] ?? r['email'] ?? 'Unknown')
-                                .toString();
+                        final dn = (r['display_name'] ?? r['email'] ?? 'Unknown').toString();
                         final email = (r['email'] ?? '').toString();
                         final avatarUrl = (r['avatar_url'] ?? '').toString();
                         final checked = selected.contains(id);
@@ -343,23 +279,11 @@ class _MessagesScreenState extends State<MessagesScreen> {
                           }),
                           secondary: CircleAvatar(
                             backgroundColor: const Color.fromARGB(38, 24, 45, 83),
-                            backgroundImage: avatarUrl.isNotEmpty
-                                ? NetworkImage(avatarUrl)
-                                : null,
-                            child: avatarUrl.isEmpty
-                                ? const Icon(Icons.person)
-                                : null,
+                            backgroundImage: avatarUrl.isNotEmpty ? NetworkImage(avatarUrl) : null,
+                            child: avatarUrl.isEmpty ? const Icon(Icons.person) : null,
                           ),
-                          title: Text(
-                            dn,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          subtitle: Text(
-                            email,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
+                          title: Text(dn, maxLines: 1, overflow: TextOverflow.ellipsis),
+                          subtitle: Text(email, maxLines: 1, overflow: TextOverflow.ellipsis),
                         );
                       },
                     ),
@@ -370,9 +294,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
                   child: FilledButton.icon(
                     icon: const Icon(Icons.check),
                     label: const Text('Select'),
-                    onPressed: selected.isEmpty
-                        ? null
-                        : () => Navigator.pop(ctx),
+                    onPressed: selected.isEmpty ? null : () => Navigator.pop(ctx),
                   ),
                 ),
               ],
@@ -385,11 +307,8 @@ class _MessagesScreenState extends State<MessagesScreen> {
     return selected.toList();
   }
 
-  void _snack(String msg) =>
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  void _snack(String msg) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
 }
-
-// ───────────────────────── Conversation Screen ─────────────────────────
 
 class ConversationScreen extends StatefulWidget {
   const ConversationScreen({super.key, required this.conversationId});
@@ -412,13 +331,11 @@ class _ConversationScreenState extends State<ConversationScreen> {
   final _sendCtrl = TextEditingController();
   sp.RealtimeChannel? _channel;
   final _scrollController = ScrollController();
-  Timer? _pollTimer;
 
   @override
   void initState() {
     super.initState();
     _prime();
-    // Initialize notification service
     NotificationService().init();
   }
 
@@ -426,7 +343,6 @@ class _ConversationScreenState extends State<ConversationScreen> {
   void dispose() {
     _sendCtrl.dispose();
     _channel?.unsubscribe();
-    _pollTimer?.cancel();
     super.dispose();
   }
 
@@ -438,10 +354,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
     try {
       final conv = await ChatService.conversation(widget.conversationId);
       final parts = await ChatService.participants(widget.conversationId);
-      final msgs = await ChatService.messages(
-        widget.conversationId,
-        limit: 200,
-      );
+      final msgs = await ChatService.messages(widget.conversationId, limit: 200);
 
       _conversation = conv;
       _members = parts;
@@ -452,97 +365,36 @@ class _ConversationScreenState extends State<ConversationScreen> {
         onInsert: (row) async {
           setState(() => _messages.add(row));
 
-          // Scroll to bottom after a short delay so the newly added message is visible
           try {
             await Future.delayed(const Duration(milliseconds: 50));
             if (_scrollController.hasClients) {
-              _scrollController.animateTo(
-                _scrollController.position.maxScrollExtent + 100,
-                duration: const Duration(milliseconds: 200),
-                curve: Curves.easeOut,
-              );
+              _scrollController.animateTo(_scrollController.position.maxScrollExtent + 100, duration: const Duration(milliseconds: 200), curve: Curves.easeOut);
             }
           } catch (_) {}
 
-          // Show local notification for incoming messages from others
           final me = sp.Supabase.instance.client.auth.currentUser?.id ?? '';
           final senderId = (row['sender_id'] ?? '').toString();
           if (senderId != me) {
-            final senderName = _members.firstWhere(
-                  (m) => (m['user_id'] ?? '') == senderId,
-                  orElse: () => {'display_name': 'Someone'},
-                )['display_name'] ?? 'Someone';
+            final isGroup = (_conversation?['is_group'] as bool?) ?? false;
+            String title;
+            if (isGroup) {
+              title = (_conversation?['title'] as String?)?.trim() ?? 'Group Message';
+              if (title.isEmpty) title = 'Group Message';
+            } else {
+              final senderName = _members.firstWhere((m) => (m['user_id'] ?? '') == senderId, orElse: () => {'display_name': 'Someone'})['display_name'] ?? 'Someone';
+              title = senderName.toString();
+            }
+
             final body = (row['body'] ?? '').toString();
-
-            // create a short title and body
-            final title = senderName.toString();
-            NotificationService().showNotification(
-              id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
-              title: title,
-              body: body,
-            );
-
-            // add to recent notifications list
+            NotificationService().showNotification(id: DateTime.now().millisecondsSinceEpoch.remainder(100000), title: title, body: body);
             NotificationService().addRecentNotification(
               title: title,
               body: body,
+              at: DateTime.tryParse(row['created_at'] as String? ?? ''),
             );
           }
         },
       );
-
-      // Start polling every 2 seconds to fetch missing messages as a fallback
-      _pollTimer?.cancel();
-      _pollTimer = Timer.periodic(const Duration(seconds: 2), (t) async {
-        try {
-          final msgs = await ChatService.messages(widget.conversationId, limit: 200);
-          if (msgs.isEmpty) return;
-          // Merge any new messages by id
-          final existingIds = _messages.map((m) => m['id'].toString()).toSet();
-          final newOnes = <Map<String, dynamic>>[];
-          for (final m in msgs) {
-            final idStr = m['id'].toString();
-            if (!existingIds.contains(idStr)) {
-              newOnes.add(m);
-            }
-          }
-          if (newOnes.isNotEmpty) {
-            setState(() {
-              _messages.addAll(newOnes);
-            });
-            // Scroll to bottom
-            await Future.delayed(const Duration(milliseconds: 60));
-            if (_scrollController.hasClients) {
-              _scrollController.animateTo(
-                _scrollController.position.maxScrollExtent + 100,
-                duration: const Duration(milliseconds: 200),
-                curve: Curves.easeOut,
-              );
-            }
-
-            // Notify for incoming messages that aren't from me
-            final me = sp.Supabase.instance.client.auth.currentUser?.id ?? '';
-            for (final nm in newOnes) {
-              final senderId = (nm['sender_id'] ?? '').toString();
-              if (senderId != me) {
-                final parts = await ChatService.participants(widget.conversationId);
-                final other = parts.firstWhere((m) => (m['user_id'] as String?) == senderId, orElse: () => parts.isNotEmpty ? parts.first : {});
-                final title = (other['display_name'] ?? other['email'] ?? 'Message').toString();
-                final body = (nm['body'] ?? '').toString();
-                NotificationService().showNotification(
-                  id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
-                  title: title,
-                  body: body,
-                );
-                NotificationService().addRecentNotification(title: title, body: body);
-              }
-            }
-          }
-        } catch (e) {
-          // swallow and log
-          print('DEBUG: Conversation poll error: $e');
-        }
-      });
     } catch (e) {
       _error = e.toString();
     }
@@ -557,12 +409,8 @@ class _ConversationScreenState extends State<ConversationScreen> {
       return (t?.isNotEmpty == true) ? t! : 'Group';
     }
     final uid = sp.Supabase.instance.client.auth.currentUser?.id;
-    final other = _members.firstWhere(
-      (m) => (m['user_id'] as String?) != uid,
-      orElse: () => _members.isNotEmpty ? _members.first : {},
-    );
-    return (other['display_name'] ?? other['email'] ?? 'Direct Message')
-        .toString();
+    final other = _members.firstWhere((m) => (m['user_id'] as String?) != uid, orElse: () => _members.isNotEmpty ? _members.first : {});
+    return (other['display_name'] ?? other['email'] ?? 'Direct Message').toString();
   }
 
   @override
@@ -576,12 +424,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
         backgroundColor: mainBlue,
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.info_outline),
-            onPressed: () => _showConversationInfo(
-              isGroup: (_conversation?['is_group'] as bool?) ?? false,
-            ),
-          ),
+          IconButton(icon: const Icon(Icons.info_outline), onPressed: () => _showConversationInfo(isGroup: (_conversation?['is_group'] as bool?) ?? false)),
         ],
       ),
       body: _loading
@@ -592,10 +435,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
               children: [
                 Expanded(
                   child: ListView.builder(
-                    padding: const EdgeInsets.symmetric(
-                      vertical: 8,
-                      horizontal: 12,
-                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
                     controller: _scrollController,
                     itemCount: _messages.length,
                     itemBuilder: (_, i) {
@@ -605,41 +445,18 @@ class _ConversationScreenState extends State<ConversationScreen> {
                       final time = (m['created_at'] ?? '').toString();
 
                       return Align(
-                        alignment: mine
-                            ? Alignment.centerRight
-                            : Alignment.centerLeft,
+                        alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
                         child: Container(
                           margin: const EdgeInsets.symmetric(vertical: 4),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 8,
-                          ),
-                          constraints: BoxConstraints(
-                            maxWidth: MediaQuery.of(context).size.width * 0.78,
-                          ),
-                          decoration: BoxDecoration(
-                            color: mine ? mainBlue : Colors.grey[200],
-                            borderRadius: BorderRadius.circular(14),
-                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.78),
+                          decoration: BoxDecoration(color: mine ? mainBlue : Colors.grey[200], borderRadius: BorderRadius.circular(14)),
                           child: Column(
-                            crossAxisAlignment: mine
-                                ? CrossAxisAlignment.end
-                                : CrossAxisAlignment.start,
+                            crossAxisAlignment: mine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                body,
-                                style: TextStyle(
-                                  color: mine ? Colors.white : Colors.black87,
-                                ),
-                              ),
+                              Text(body, style: TextStyle(color: mine ? Colors.white : Colors.black87)),
                               const SizedBox(height: 4),
-                              Text(
-                                _fmtTime(time),
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  color: mine ? Colors.white70 : Colors.black45,
-                                ),
-                              ),
+                              Text(_fmtTime(time), style: TextStyle(fontSize: 10, color: mine ? Colors.white70 : Colors.black45)),
                             ],
                           ),
                         ),
@@ -659,30 +476,15 @@ class _ConversationScreenState extends State<ConversationScreen> {
                             maxLines: 5,
                             decoration: InputDecoration(
                               hintText: 'Type a message…',
-                              enabledBorder: OutlineInputBorder(
-                                borderSide: const BorderSide(color: mainBlue),
-                                borderRadius: BorderRadius.circular(24),
-                              ),
-                              focusedBorder: OutlineInputBorder(
-                                borderSide: const BorderSide(
-                                  color: mainBlue,
-                                  width: 2,
-                                ),
-                                borderRadius: BorderRadius.circular(24),
-                              ),
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 12,
-                              ),
+                              enabledBorder: OutlineInputBorder(borderSide: const BorderSide(color: mainBlue), borderRadius: BorderRadius.circular(24)),
+                              focusedBorder: OutlineInputBorder(borderSide: const BorderSide(color: mainBlue, width: 2), borderRadius: BorderRadius.circular(24)),
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                             ),
                           ),
                         ),
                         const SizedBox(width: 8),
                         FilledButton(
-                          style: FilledButton.styleFrom(
-                            backgroundColor: mainBlue,
-                            foregroundColor: Colors.white,
-                          ),
+                          style: FilledButton.styleFrom(backgroundColor: mainBlue, foregroundColor: Colors.white),
                           onPressed: _send,
                           child: const Icon(Icons.send),
                         ),
@@ -692,8 +494,6 @@ class _ConversationScreenState extends State<ConversationScreen> {
                 ),
               ],
             ),
-      // Debug helper: manual poll trigger
-      floatingActionButton: _debugFab(),
     );
   }
 
@@ -713,25 +513,14 @@ class _ConversationScreenState extends State<ConversationScreen> {
     if (text.isEmpty) return;
     _sendCtrl.clear();
     try {
-      final sent = await ChatService.sendMessage(
-        conversationId: widget.conversationId,
-        body: text,
-      );
+      final sent = await ChatService.sendMessage(conversationId: widget.conversationId, body: text);
 
-      // Immediately append the returned message to the list and scroll to bottom
-      setState(() {
-        _messages.add(sent);
-      });
+      setState(() => _messages.add(sent));
       await Future.delayed(const Duration(milliseconds: 80));
       _scrollController.jumpTo(_scrollController.position.maxScrollExtent + 100);
-
-      print('DEBUG: Message sent and appended: $sent');
-      // no notification for sender
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Send failed: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Send failed: $e')));
     }
   }
 
@@ -744,12 +533,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
       isScrollControlled: true,
       builder: (ctx) {
         return Padding(
-          padding: EdgeInsets.only(
-            left: 16,
-            right: 16,
-            top: 12,
-            bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
-          ),
+          padding: EdgeInsets.only(left: 16, right: 16, top: 12, bottom: MediaQuery.of(ctx).viewInsets.bottom + 16),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -758,21 +542,12 @@ class _ConversationScreenState extends State<ConversationScreen> {
                 children: [
                   const Icon(Icons.info_outline, color: mainBlue),
                   const SizedBox(width: 8),
-                  Text(
-                    'Conversation info',
-                    style: Theme.of(ctx).textTheme.titleLarge,
-                  ),
+                  Text('Conversation info', style: Theme.of(ctx).textTheme.titleLarge),
                 ],
               ),
               const SizedBox(height: 16),
               if (isGroup) ...[
-                TextField(
-                  controller: nameCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Group name',
-                    prefixIcon: Icon(Icons.edit),
-                  ),
-                ),
+                TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Group name', prefixIcon: Icon(Icons.edit))),
                 const SizedBox(height: 8),
                 Align(
                   alignment: Alignment.centerRight,
@@ -782,29 +557,21 @@ class _ConversationScreenState extends State<ConversationScreen> {
                     style: FilledButton.styleFrom(backgroundColor: mainBlue),
                     onPressed: () async {
                       try {
-                        await ChatService.updateConversationTitle(
-                          conversationId: widget.conversationId,
-                          title: nameCtrl.text,
-                        );
+                        await ChatService.updateConversationTitle(conversationId: widget.conversationId, title: nameCtrl.text);
                         if (mounted) {
                           Navigator.pop(ctx);
                           await _prime();
                         }
                       } catch (e) {
                         if (!mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Update failed: $e')),
-                        );
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Update failed: $e')));
                       }
                     },
                   ),
                 ),
                 const SizedBox(height: 8),
               ],
-              Text(
-                'Participants (${_members.length})',
-                style: Theme.of(ctx).textTheme.titleMedium,
-              ),
+              Text('Participants (${_members.length})', style: Theme.of(ctx).textTheme.titleMedium),
               const SizedBox(height: 8),
               Flexible(
                 child: ListView.separated(
@@ -813,19 +580,14 @@ class _ConversationScreenState extends State<ConversationScreen> {
                   separatorBuilder: (_, __) => const Divider(height: 1),
                   itemBuilder: (_, i) {
                     final m = _members[i];
-                    final dn = (m['display_name'] ?? m['email'] ?? 'Unknown')
-                        .toString();
+                    final dn = (m['display_name'] ?? m['email'] ?? 'Unknown').toString();
                     final email = (m['email'] ?? '').toString();
                     final avatar = (m['avatar_url'] ?? '').toString();
                     return ListTile(
                       leading: CircleAvatar(
                         backgroundColor: const Color.fromARGB(26, 24, 45, 83),
-                        backgroundImage: avatar.isNotEmpty
-                            ? NetworkImage(avatar)
-                            : null,
-                        child: avatar.isEmpty
-                            ? const Icon(Icons.person, color: mainBlue)
-                            : null,
+                        backgroundImage: avatar.isNotEmpty ? NetworkImage(avatar) : null,
+                        child: avatar.isEmpty ? const Icon(Icons.person, color: mainBlue) : null,
                       ),
                       title: Text(dn),
                       subtitle: Text(email),
@@ -850,51 +612,14 @@ class _ConversationScreenState extends State<ConversationScreen> {
   }
 
   Future<void> _showAddMembers() async {
-    final picked =
-        await (context
-                .findAncestorStateOfType<_MessagesScreenState>()
-                ?._pickUsers(single: false) ??
-            Future.value(<String>[]));
+    final picked = await (context.findAncestorStateOfType<_MessagesScreenState>()?._pickUsers(single: false) ?? Future.value(<String>[]));
     if (picked.isEmpty) return;
     try {
-      await ChatService.addParticipants(
-        conversationId: widget.conversationId,
-        userIds: picked,
-      );
+      await ChatService.addParticipants(conversationId: widget.conversationId, userIds: picked);
       await _prime();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Add failed: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Add failed: $e')));
     }
-  }
-
-  // Debug helper: manual poll trigger
-  Widget _debugFab() {
-    if (!kDebugMode) return const SizedBox.shrink();
-    return FloatingActionButton.extended(
-      label: const Text('Poll'),
-      icon: const Icon(Icons.refresh),
-      onPressed: () async {
-        try {
-          print('DEBUG: Manual poll requested');
-          final msgs = await ChatService.messages(widget.conversationId, limit: 200);
-          print('DEBUG: Manual poll returned ${msgs.length} messages');
-          final existingIds = _messages.map((m) => m['id'].toString()).toSet();
-          final newOnes = msgs.where((m) => !existingIds.contains(m['id'].toString())).toList();
-          if (newOnes.isNotEmpty) {
-            setState(() {
-              _messages.addAll(newOnes);
-            });
-            await Future.delayed(const Duration(milliseconds: 80));
-            if (_scrollController.hasClients) _scrollController.jumpTo(_scrollController.position.maxScrollExtent + 100);
-            print('DEBUG: Manual poll appended ${newOnes.length} new messages');
-          }
-        } catch (e) {
-          print('DEBUG: Manual poll error: $e');
-        }
-      },
-    );
   }
 }

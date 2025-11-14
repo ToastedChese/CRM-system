@@ -278,7 +278,7 @@ class _Podium extends StatelessWidget {
               Container(
                 height: heights[i],
                 decoration: BoxDecoration(
-                  color: Colors.grey.shade200,
+                  color: Theme.of(context).colorScheme.surfaceVariant,
                   borderRadius: const BorderRadius.vertical(
                     top: Radius.circular(12),
                   ),

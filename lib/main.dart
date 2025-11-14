@@ -5,6 +5,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:async';
 
+import 'package:firebase_core/firebase_core.dart'; // Import Firebase Core
+
 import 'package:powerlink_crm/screens/add_customer_screen.dart';
 import 'package:powerlink_crm/screens/customer_dashboard.dart';
 import 'package:powerlink_crm/screens/help_chat_screen.dart';
@@ -37,6 +39,11 @@ Future<void> main() async {
   // ✅ Load .env
   await dotenv.load(fileName: ".env");
   print('DEBUG_STARTUP: after dotenv.load');
+
+  print('DEBUG_STARTUP: before Firebase.initializeApp');
+  // ✅ Initialize Firebase
+  await Firebase.initializeApp();
+  print('DEBUG_STARTUP: after Firebase.initializeApp');
 
   print('DEBUG_STARTUP: before Supabase.initialize');
   // ✅ Initialize Supabase
@@ -83,56 +90,19 @@ Future<void> main() async {
     print('DEBUG_STARTUP: postFrameCallback - init FcmService');
     await FcmService().init(); // Initialize FCM service
 
-    // Subscribe to global message inserts to deliver notifications and persist them
-    try {
-      final me = Supabase.instance.client.auth.currentUser?.id;
-      if (me != null) {
-        print('DEBUG_STARTUP: subscribing to global message inserts for notifications');
-        // Subscribe and keep the channel reference to prevent GC (store in a static variable)
-        GlobalSubscriptions.subscribeAllMessages((row) async {
-          try {
-            final convId = (row['conversation_id'] ?? 0) as int;
-            final senderId = (row['sender_id'] ?? '').toString();
-            if (senderId == me) return; // don't notify sender
-
-            // Only notify if current user is participant in the conversation
-            final isPart = await ChatService.isParticipant(convId, me);
-            if (!isPart) return;
-
-            final body = (row['body'] ?? '').toString();
-
-            // Get sender display name via participants view
-            final parts = await ChatService.participants(convId);
-            final other = parts.firstWhere(
-                (m) => (m['user_id'] as String?) == senderId,
-                orElse: () => parts.isNotEmpty ? parts.first : {});
-            final title = (other['display_name'] ?? other['email'] ?? 'Message').toString();
-
-            // show notification and persist
-            NotificationService().showNotification(
-              id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
-              title: title,
-              body: body,
-            );
-            NotificationService().addRecentNotification(title: title, body: body);
-          } catch (e) {
-            print('DEBUG: global message handler error: $e');
-          }
-        });
-      }
-    } catch (e) {
-      print('DEBUG: failed to subscribe to global messages: $e');
-    }
-
     // Also listen for auth state changes to (re)subscribe after sign-in
     try {
       Supabase.instance.client.auth.onAuthStateChange.listen((data) async {
         final event = data.event;
         final session = data.session;
         print('DEBUG: auth state change event=$event');
-        if (session != null) {
+        if (session != null && (event == AuthChangeEvent.signedIn || event == AuthChangeEvent.initialSession)) {
           final uid = session.user.id;
           print('DEBUG: auth state change - user signed in uid=$uid');
+
+          // Sync notifications for offline messages.
+          ChatService.createNotificationsForOfflineMessages();
+
           // Ensure we have a subscription for this new user
           GlobalSubscriptions.subscribeAllMessages((row) async {
             try {
@@ -142,17 +112,34 @@ Future<void> main() async {
               final isPart = await ChatService.isParticipant(convId, uid);
               if (!isPart) return;
               final body = (row['body'] ?? '').toString();
-              final parts = await ChatService.participants(convId);
-              final other = parts.firstWhere(
-                  (m) => (m['user_id'] as String?) == senderId,
-                  orElse: () => parts.isNotEmpty ? parts.first : {});
-              final title = (other['display_name'] ?? other['email'] ?? 'Message').toString();
+
+              // Get conversation details to determine if it's a group chat
+              final conv = await ChatService.conversation(convId);
+              final isGroup = (conv['is_group'] as bool?) ?? false;
+
+              String title;
+              if (isGroup) {
+                title = (conv['title'] as String?)?.trim() ?? 'Group Message';
+                if (title.isEmpty) title = 'Group Message';
+              } else {
+                final parts = await ChatService.participants(convId);
+                final other = parts.firstWhere(
+                    (m) => (m['user_id'] as String?) == senderId,
+                    orElse: () => parts.isNotEmpty ? parts.first : {});
+                title = (other['display_name'] ?? other['email'] ?? 'Message').toString();
+              }
+
               NotificationService().showNotification(
                 id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
                 title: title,
                 body: body,
               );
-              NotificationService().addRecentNotification(title: title, body: body);
+              // Pass the original message timestamp to the notification service
+              NotificationService().addRecentNotification(
+                title: title,
+                body: body,
+                at: DateTime.tryParse(row['created_at'] as String? ?? ''),
+              );
             } catch (e) {
               print('DEBUG: auth-listener global message handler error: $e');
             }
@@ -193,17 +180,24 @@ class _GlobalPoller {
             _lastMessageIdByConv[convId] = lastId;
             final senderId = (last['sender_id'] ?? '').toString();
             if (senderId != me) {
-              final parts = await ChatService.participants(convId);
-              final other = parts.firstWhere((m) => (m['user_id'] as String?) == senderId, orElse: () => parts.isNotEmpty ? parts.first : {});
-              final title = (other['display_name'] ?? other['email'] ?? 'Message').toString();
+              final isGroup = (c['is_group'] as bool?) ?? false;
+              String title;
+              if (isGroup) {
+                title = (c['title'] as String?)?.trim() ?? 'Group Message';
+                if (title.isEmpty) title = 'Group Message';
+              } else {
+                final parts = await ChatService.participants(convId);
+                final other = parts.firstWhere((m) => (m['user_id'] as String?) == senderId, orElse: () => parts.isNotEmpty ? parts.first : {});
+                title = (other['display_name'] ?? other['email'] ?? 'Message').toString();
+              }
               final body = (last['body'] ?? '').toString();
               print('DEBUG: GlobalPoller detected new message conv=$convId id=$lastId');
-              NotificationService().showNotification(
-                id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
+              // DO NOT re-show notifications for old messages, only add to recent list.
+              NotificationService().addRecentNotification(
                 title: title,
                 body: body,
+                at: DateTime.tryParse(last['created_at'] as String? ?? ''),
               );
-              NotificationService().addRecentNotification(title: title, body: body);
             }
           }
         }

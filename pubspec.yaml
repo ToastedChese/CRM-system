@@ -25,7 +25,7 @@ dependencies:
   
   # For simple, persistent key-value storage (e.g., user preferences).
   shared_preferences: ^2.5.3
-  
+
   # The official Flutter client for Supabase (handles auth and database access).
   supabase_flutter: ^2.5.0
 
@@ -53,7 +53,8 @@ dependencies:
   # Local notifications
   flutter_local_notifications: ^19.5.0
 
-  # For Firebase Cloud Messaging (Push Notifications)
+  # Firebase
+  firebase_core: ^3.0.0
   firebase_messaging: ^15.0.1
 
 

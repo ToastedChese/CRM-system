@@ -16,6 +16,7 @@ class FcmService {
     // Get the FCM token and save it to Supabase
     _messaging.getToken().then((token) {
       if (token != null) {
+        print('FCM Token: $token'); // For debugging
         _saveTokenToSupabase(token);
       }
     });
@@ -28,35 +29,42 @@ class FcmService {
     final userId = Supabase.instance.client.auth.currentUser?.id;
     if (userId == null) return;
 
+    bool savedAtLeastOnce = false;
+
+    // Attempt to update the employees table
     try {
-      // Try to update the token in the 'employees' table
       final employeeRes = await Supabase.instance.client
           .from('employees')
           .update({'fcm_token': token})
-          .eq('id', userId)
-          .maybeSingle();
+          .eq('auth_user_id', userId)
+          .select(); 
 
-      if (employeeRes != null) {
-        print('FCM token saved to employees table');
-        return; // Token was saved, so we are done
+      if (employeeRes.isNotEmpty) {
+        print('FCM token successfully saved to employees table.');
+        savedAtLeastOnce = true;
       }
+    } catch (e) {
+      print('Error saving FCM token to employees table: $e');
+    }
 
-      // If the user wasn't in the employees table, try the 'managers' table
+    // Attempt to update the managers table, regardless of employee result
+    try {
       final managerRes = await Supabase.instance.client
           .from('managers')
           .update({'fcm_token': token})
-          .eq('id', userId)
-          .maybeSingle();
+          .eq('auth_user_id', userId)
+          .select();
           
-      if (managerRes != null) {
-        print('FCM token saved to managers table');
-        return;
+      if (managerRes.isNotEmpty) {
+        print('FCM token successfully saved to managers table.');
+        savedAtLeastOnce = true;
       }
-
-      print('FCM token not saved: User not found in employees or managers tables.');
-
     } catch (e) {
-      print('Error saving FCM token to Supabase: $e');
+      print('Error saving FCM token to managers table: $e');
+    }
+
+    if (!savedAtLeastOnce) {
+      print('FCM token not saved: User with auth_user_id=$userId not found in employees or managers tables.');
     }
   }
 }

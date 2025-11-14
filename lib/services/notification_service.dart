@@ -10,7 +10,7 @@ class NotificationService {
   static final NotificationService _instance = NotificationService._privateConstructor();
   factory NotificationService() => _instance;
 
-  static const _prefsKey = 'recent_notifications_v1';
+  static const _prefsKey = 'recent_notifications_v2'; // Key updated for new structure
   final FlutterLocalNotificationsPlugin _plugin = FlutterLocalNotificationsPlugin();
 
   bool _initialized = false;
@@ -22,7 +22,6 @@ class NotificationService {
     if (_initialized) return;
 
     try {
-      // Use non-const initialization to avoid potential platform edge cases
       final androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
       final iosInit = DarwinInitializationSettings();
 
@@ -33,7 +32,6 @@ class NotificationService {
         ),
       );
 
-      // Create Android notification channel for API 26+
       try {
         final androidPlugin = _plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
         const channel = AndroidNotificationChannel(
@@ -43,15 +41,12 @@ class NotificationService {
           importance: Importance.max,
         );
         await androidPlugin?.createNotificationChannel(channel);
-        print('DEBUG: Android notification channel created');
       } catch (e) {
         print('DEBUG: failed to create Android notification channel: $e');
       }
 
       _initialized = true;
-      print('DEBUG: NotificationService initialized');
     } catch (e, st) {
-      // Log and don't rethrow so startup won't be blocked by notification init errors
       print('❌ NotificationService.init failed: $e');
       print(st);
       _initialized = false;
@@ -61,27 +56,15 @@ class NotificationService {
   Future<bool> _canNotify() async {
     try {
       final status = await Permission.notification.status;
-      print('DEBUG: notification permission status=$status');
-      // On Android, prior to API 33 notifications don't require runtime permission
-      // and some devices/reports may return unexpected values. Allow Android by default
-      // and rely on the plugin/system to handle delivery.
       if (Platform.isAndroid) return true;
       return status.isGranted;
     } catch (_) {
-      // If permission check fails, allow on Android, otherwise deny.
-      try {
-        if (Platform.isAndroid) return true;
-      } catch (_) {}
-      return false;
+      return Platform.isAndroid;
     }
   }
 
   Future<void> showNotification({required int id, required String title, required String body}) async {
-    final allowed = await _canNotify();
-    if (!allowed) {
-      print('DEBUG: showNotification skipped - permission not granted');
-      return;
-    }
+    if (!await _canNotify()) return;
 
     try {
       const androidDetails = AndroidNotificationDetails(
@@ -97,12 +80,8 @@ class NotificationService {
         id,
         title,
         body,
-        const NotificationDetails(
-          android: androidDetails,
-          iOS: iosDetails,
-        ),
+        const NotificationDetails(android: androidDetails, iOS: iosDetails),
       );
-      print('DEBUG: showNotification displayed id=$id title=$title');
     } catch (e) {
       print('❌ showNotification failed: $e');
     }
@@ -117,19 +96,30 @@ class NotificationService {
       'body': body,
       'ts': (at ?? DateTime.now()).toIso8601String(),
     };
+
+    bool exists = list.any((s) {
+      try {
+        final existing = jsonDecode(s) as Map<String, dynamic>;
+        return existing['title'] == title && existing['body'] == body;
+      } catch (_) {
+        return false;
+      }
+    });
+
+    if (exists) {
+      return;
+    }
+
     final entry = jsonEncode(entryMap);
 
-    // Prepend and keep max 10
     final updated = [entry, ...list];
-    if (updated.length > 10) updated.removeRange(10, updated.length);
+    if (updated.length > 10) {
+      updated.removeRange(10, updated.length);
+    }
 
     await prefs.setStringList(_prefsKey, updated);
-    print('DEBUG: addRecentNotification saved title=$title');
 
-    // Broadcast to listeners
-    try {
-      _recentController.add(entryMap);
-    } catch (_) {}
+    _recentController.add(entryMap);
   }
 
   Future<List<Map<String, dynamic>>> getRecentNotifications() async {
@@ -139,21 +129,17 @@ class NotificationService {
       try {
         return Map<String, dynamic>.from(jsonDecode(s) as Map);
       } catch (_) {
-        return {
-          'title': 'Notification',
-          'body': s,
-          'ts': DateTime.now().toIso8601String(),
-        };
+        return {'title': 'Error', 'body': 'Could not decode notification.'};
       }
     }).toList();
   }
 
+  // This method now explicitly sets the list to empty, which is more robust than remove().
   Future<void> clearRecentNotifications() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_prefsKey);
-    try {
-      _recentController.add({'title': 'cleared', 'body': ''});
-    } catch (_) {}
+    await prefs.setStringList(_prefsKey, []); // Explicitly set to an empty list.
+    // Send a special event to force UI to clear its state.
+    _recentController.add({'action': 'clear'});
   }
 
   void dispose() {

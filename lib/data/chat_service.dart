@@ -1,3 +1,4 @@
+import 'package:powerlink_crm/services/notification_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' as sp;
 import 'supabase_service.dart';
 
@@ -59,6 +60,48 @@ class ChatService {
         .select('id, title, is_group, created_by, created_at')
         .single();
     return Map<String, dynamic>.from(res as Map);
+  }
+
+  // ─────────────────── Notification Sync Logic ───────────────────
+
+  /// Checks all of the current user's conversations and creates a notification
+  /// for the last message in each if it's from another user.
+  static Future<void> createNotificationsForOfflineMessages() async {
+    try {
+      final me = _db.auth.currentUser?.id;
+      if (me == null) return;
+
+      final convos = await myConversations();
+
+      for (final c in convos) {
+        final lastMsg = await lastMessage(c['id'] as int);
+        if (lastMsg == null) continue;
+
+        final senderId = lastMsg['sender_id'] as String?;
+        if (senderId == null || senderId == me) continue;
+
+        final isGroup = (c['is_group'] as bool?) ?? false;
+        String title;
+        if (isGroup) {
+          title = (c['title'] as String?)?.trim() ?? 'Group Message';
+          if (title.isEmpty) title = 'Group Message';
+        } else {
+          final parts = await participants(c['id'] as int);
+          final other = parts.firstWhere((p) => p['user_id'] != me, orElse: () => {});
+          title = other['display_name'] ?? 'Direct Message';
+        }
+
+        await NotificationService().addRecentNotification(
+          title: title,
+          body: lastMsg['body'] as String? ?? '',
+          at: DateTime.tryParse(lastMsg['created_at'] as String? ?? ''),
+        );
+      }
+    } catch (e) {
+      // This is a background task, so we don't want to throw an error
+      // to the user. Just log it for debugging.
+      print('❌ Error syncing offline notifications: $e');
+    }
   }
 
   // ───────────────────────── Participants ─────────────────────────
