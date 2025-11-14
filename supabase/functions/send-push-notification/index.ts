@@ -33,51 +33,45 @@ function initializeFirebase() {
 serve(async (req) => {
   const firebaseInit = initializeFirebase();
   if (!firebaseInit.success) {
-    // Return the detailed error message to the trigger.
     return new Response(`Error: ${firebaseInit.error}`, { status: 500 });
   }
 
   try {
-    // Use a custom environment variable for the service role key to avoid conflicts.
-    const supabaseClient = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("POWERLINK_SERVICE_ROLE_KEY")!
-    );
+    const serviceRoleKey = Deno.env.get("POWERLINK_SERVICE_ROLE_KEY");
+    if (!serviceRoleKey) {
+      return new Response("Error: POWERLINK_SERVICE_ROLE_KEY is not available.", { status: 500 });
+    }
 
+    const supabaseClient = createClient(Deno.env.get("SUPABASE_URL")!, serviceRoleKey);
     const { record: newMessage } = await req.json();
-
     const { conversation_id, sender_id, body } = newMessage;
 
-    const { data: participants, error: partsError } = await supabaseClient
-      .from("conversation_participants")
-      .select("user_id")
-      .eq("conversation_id", conversation_id);
+    // --- OPTIMIZATION: Run initial queries in parallel ---
+    const [participantsRes, convRes] = await Promise.all([
+      supabaseClient.from("conversation_participants").select("user_id").eq("conversation_id", conversation_id),
+      supabaseClient.from("conversations").select("is_group, title").eq("id", conversation_id).single(),
+    ]);
 
-    if (partsError) throw partsError;
+    if (participantsRes.error) throw participantsRes.error;
+    if (convRes.error) throw convRes.error;
 
-    const recipientIds = participants
-      .map((p) => p.user_id)
-      .filter((id) => id !== sender_id);
-
+    const recipientIds = participantsRes.data.map((p) => p.user_id).filter((id) => id !== sender_id);
     if (recipientIds.length === 0) {
       return new Response("ok");
     }
 
-    const { data: employeeTokens } = await supabaseClient
-      .from("employees")
-      .select("fcm_token")
-      .in("auth_user_id", recipientIds)
-      .not("fcm_token", "is", null);
+    // --- OPTIMIZATION: Fetch all tokens in parallel ---
+    const [employeeTokensRes, managerTokensRes] = await Promise.all([
+      supabaseClient.from("employees").select("fcm_token").in("auth_user_id", recipientIds).not("fcm_token", "is", null),
+      supabaseClient.from("managers").select("fcm_token").in("auth_user_id", recipientIds).not("fcm_token", "is", null),
+    ]);
 
-    const { data: managerTokens } = await supabaseClient
-      .from("managers")
-      .select("fcm_token")
-      .in("auth_user_id", recipientIds)
-      .not("fcm_token", "is", null);
+    if (employeeTokensRes.error) throw employeeTokensRes.error;
+    if (managerTokensRes.error) throw managerTokensRes.error;
 
     const allTokens = [
-      ...(employeeTokens?.map((t) => t.fcm_token) || []),
-      ...(managerTokens?.map((t) => t.fcm_token) || []),
+      ...(employeeTokensRes.data?.map((t) => t.fcm_token) || []),
+      ...(managerTokensRes.data?.map((t) => t.fcm_token) || []),
     ];
     const uniqueTokens = [...new Set(allTokens)].filter(Boolean);
 
@@ -85,31 +79,20 @@ serve(async (req) => {
       return new Response("ok");
     }
 
-    const { data: convData } = await supabaseClient
-      .from("conversations")
-      .select("is_group, title")
-      .eq("id", conversation_id)
-      .single();
-
+    // --- Title Logic (already efficient) ---
     let title = "New Message";
+    const convData = convRes.data;
     if (convData?.is_group) {
       title = convData.title || "Group Message";
     } else {
-      const { data: senderProfile } = await supabaseClient
-        .from("employees")
-        .select("first_name, last_name")
-        .eq("auth_user_id", sender_id)
-        .single();
+      // This part is still sequential but less critical than the parallel queries above.
+      const { data: senderProfile } = await supabaseClient.from("employees").select("first_name, last_name").eq("auth_user_id", sender_id).single();
       if (senderProfile) {
         title = `${senderProfile.first_name} ${senderProfile.last_name}`;
       } else {
-        const { data: managerProfile } = await supabaseClient
-            .from("managers")
-            .select("first_name, last_name")
-            .eq("auth_user_id", sender_id)
-            .single();
+        const { data: managerProfile } = await supabaseClient.from("managers").select("first_name, last_name").eq("auth_user_id", sender_id).single();
         if (managerProfile) {
-            title = `${managerProfile.first_name} ${managerProfile.last_name}`;
+          title = `${managerProfile.first_name} ${managerProfile.last_name}`;
         }
       }
     }
@@ -119,18 +102,12 @@ serve(async (req) => {
       tokens: uniqueTokens,
     };
 
-    const response = await getMessaging().sendEachForMulticast(messagePayload);
-    
-    if (response.failureCount > 0) {
-        response.responses.forEach(resp => {
-            if (!resp.success) {
-                console.error(`Failed to send to a token: ${resp.error}`);
-            }
-        });
-    }
+    await getMessaging().sendEachForMulticast(messagePayload);
 
     return new Response("ok");
   } catch (error) {
+    // Log the detailed error to the console for better debugging
+    console.error("Function Error:", error);
     return new Response(`Error: ${error.message}`, { status: 500 });
   }
 });

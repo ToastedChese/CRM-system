@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:powerlink_crm/screens/gamification.dart';
@@ -8,6 +9,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'profile_screen.dart';
 import 'messages_screen.dart';
 import 'settings_screen.dart';
+import '../data/supabase_service.dart' as svc; 
+
 
 // Main stateful widget that acts as the navigation shell
 class EmployeeDashboard extends StatefulWidget {
@@ -99,24 +102,92 @@ class _DashboardHomePage extends StatefulWidget {
 }
 
 class _DashboardHomePageState extends State<_DashboardHomePage> {
-  Stream<Map<String, dynamic>>? _employeeStream;
   final _user = Supabase.instance.client.auth.currentUser;
+  String? _firstName;
+  int? _employeeId;
+  List<Map<String, dynamic>> _recentInteractions = [];
+  bool _loadingInteractions = true;
+  Timer? _refreshTimer;
+
+  late Future<List<svc.Task>> _tasksFuture;
+  late Future<List<Map<String, dynamic>>> _leadsFuture;
 
   @override
   void initState() {
     super.initState();
-    if (_user != null) {
-      _employeeStream = Supabase.instance.client
+    _initEmployee();
+    _tasksFuture = svc.SupabaseService.myTasks();
+    _leadsFuture = svc.SupabaseService.getLeads();
+    // Auto-refresh every 10 seconds
+    _refreshTimer = Timer.periodic(
+      const Duration(seconds: 10),
+      (_) => _loadRecentInteractions(),
+    );
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _initEmployee() async {
+    final uid = _user?.id;
+    if (uid == null) return;
+
+    try {
+      final empResp = await Supabase.instance.client
           .from('employees')
-          .stream(primaryKey: ['employee_id'])
-          .eq('auth_user_id', _user!.id)
-          .map((event) {
-            final list = event as List;
-            if (list.isNotEmpty) {
-              return Map<String, dynamic>.from(list.first as Map);
-            }
-            return <String, dynamic>{};
-          });
+          .select('employee_id, first_name')
+          .eq('auth_user_id', uid)
+          .maybeSingle();
+
+      if (mounted && empResp != null) {
+        setState(() {
+          _employeeId = empResp['employee_id'] as int?;
+          _firstName = empResp['first_name'] as String?;
+        });
+        await _loadRecentInteractions();
+      } else if (mounted) {
+        setState(() {
+          _loadingInteractions = false;
+        });
+      }
+    } catch (e) {
+      print('Error fetching employee: $e');
+      if (mounted) {
+        setState(() {
+          _loadingInteractions = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _loadRecentInteractions() async {
+    final empId = _employeeId;
+    if (empId == null) return;
+
+    try {
+      final response = await Supabase.instance.client
+          .from('employee_recentinteractions')
+          .select('*')
+          .eq('employee_id', empId)
+          .order('timestamp', ascending: false)
+          .limit(20);
+
+      if (mounted) {
+        setState(() {
+          _recentInteractions = List<Map<String, dynamic>>.from(response);
+          _loadingInteractions = false;
+        });
+      }
+    } catch (e) {
+      print("Error loading interactions: $e");
+      if (mounted) {
+        setState(() {
+          _loadingInteractions = false;
+        });
+      }
     }
   }
 
@@ -139,6 +210,24 @@ class _DashboardHomePageState extends State<_DashboardHomePage> {
 
   String _getCurrentDate() {
     return DateFormat('MMMM d, yyyy').format(DateTime.now());
+  }
+
+  String _timeAgo(DateTime date) {
+    final diff = DateTime.now().difference(date);
+    if (diff.inMinutes < 1) return "now";
+    if (diff.inHours < 1) return "${diff.inMinutes}m";
+    if (diff.inHours < 24) return "${diff.inHours}h";
+    return "${diff.inDays}d";
+  }
+
+  static String _fmtDate(DateTime d) =>
+      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  static String _fmtDateDynamic(dynamic d) {
+    if (d == null) return '';
+    final dt = d is DateTime ? d : DateTime.tryParse(d.toString());
+    if (dt == null) return '';
+    return _fmtDate(dt);
   }
 
   @override
@@ -181,135 +270,167 @@ class _DashboardHomePageState extends State<_DashboardHomePage> {
     final greeting = _getGreeting();
     final currentDate = _getCurrentDate();
     final dynamicColor = _getDynamicColor(context);
+    final displayName = _firstName ?? 'Employee';
 
-    return StreamBuilder<Map<String, dynamic>>(
-        stream: _employeeStream,
-        builder: (context, snapshot) {
-          String firstName = '...';
-          if (snapshot.hasData && snapshot.data!.isNotEmpty) {
-            firstName = snapshot.data!['first_name'] ?? 'Employee';
-          } else if (snapshot.connectionState == ConnectionState.done) {
-            firstName = 'Employee';
-          }
-
-          return Row(
-            children: [
-              const CircleAvatar(
-                radius: 30,
-                child: Icon(Icons.person, size: 30),
+    return Row(
+      children: [
+        const CircleAvatar(
+          radius: 30,
+          child: Icon(Icons.person, size: 30),
+        ),
+        const SizedBox(width: 12),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '$greeting, $displayName',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: dynamicColor,
               ),
-              const SizedBox(width: 12),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '$greeting, $firstName',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: dynamicColor,
-                    ),
-                  ),
-                  Text(
-                    'Today: $currentDate',
-                    style: theme.textTheme.bodySmall,
-                  ),
-                ],
-              ),
-            ],
-          );
-        });
+            ),
+            Text(
+              'Today: $currentDate',
+              style: theme.textTheme.bodySmall,
+            ),
+          ],
+        ),
+      ],
+    );
   }
 
   Widget _buildTaskList() {
-    final tasks = [
-      {'title': 'Follow up with client #123', 'status': 'In Progress'},
-      {'title': 'Prepare proposal for new lead', 'status': 'Pending'},
-      {'title': 'Team meeting at 3 PM', 'status': 'Completed'},
-    ];
-
-    return Column(
-      children: tasks.map((task) {
-        Color statusColor;
-        switch (task['status']) {
-          case 'Completed':
-            statusColor = Colors.green;
-            break;
-          case 'In Progress':
-            statusColor = Colors.orange;
-            break;
-          default:
-            statusColor = Colors.grey;
+    return FutureBuilder<List<svc.Task>>(
+      future: _tasksFuture,
+      builder: (context, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const LinearProgressIndicator();
         }
-        return Card(
-          elevation: 2,
-          margin: const EdgeInsets.symmetric(vertical: 4),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          child: ListTile(
-            title: Text(task['title']!),
-            trailing: Text(
-              task['status']!,
-              style: TextStyle(color: statusColor, fontWeight: FontWeight.w500),
+        if (snap.hasError) {
+          return _InlineError(
+            message: snap.error.toString(),
+            onRetry: () => setState(
+              () => _tasksFuture = svc.SupabaseService.myTasks(),
             ),
-          ),
+          );
+        }
+        final items = snap.data ?? const <svc.Task>[];
+        if (items.isEmpty) {
+          return _EmptyCard(
+            icon: Icons.checklist_outlined,
+            text: 'No tasks assigned yet',
+            onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TasksScreen())),
+          );
+        }
+        final preview = items.take(3).toList();
+        return Column(
+          children: preview.map((t) {
+            final due = t.dueDate != null
+                ? ' • Due ${_fmtDate(t.dueDate!)}'
+                : '';
+            return ListTile(
+              leading: Icon(Icons.checklist_outlined, color: _getDynamicColor(context)),
+              title: Text(t.title),
+              subtitle: Text('${t.status}$due'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TasksScreen())),
+            );
+          }).toList(),
         );
-      }).toList(),
+      },
     );
   }
 
   Widget _buildLeadsList(BuildContext context) {
-    final dynamicColor = _getDynamicColor(context);
-    final leads = [
-      {'name': 'John Smith', 'source': 'Website Form', 'status': 'New'},
-      {'name': 'Jane Doe', 'source': 'Referral', 'status': 'Contacted'},
-    ];
-
-    return Column(
-      children: leads.map((lead) {
-        return Card(
-          elevation: 2,
-          margin: const EdgeInsets.symmetric(vertical: 4),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          child: ListTile(
-            leading: Icon(Icons.person, color: dynamicColor),
-            title: Text(lead['name']!),
-            subtitle: Text('Source: ${lead['source']}'),
-            trailing: Text(lead['status']!, style: const TextStyle(fontWeight: FontWeight.w500)),
-          ),
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: _leadsFuture,
+      builder: (context, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const LinearProgressIndicator();
+        }
+        if (snap.hasError) {
+          return _InlineError(
+            message: snap.error.toString(),
+            onRetry: () => setState(
+              () => _leadsFuture = svc.SupabaseService.getLeads(),
+            ),
+          );
+        }
+        final items = snap.data ?? const <Map<String, dynamic>>[];
+        if (items.isEmpty) {
+          return _EmptyCard(
+            icon: Icons.person_add_alt_1_outlined,
+            text: 'No leads yet — tap to view/create',
+            onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const NewLeadsScreen())),
+          );
+        }
+        final preview = items.take(3).toList();
+        return Column(
+          children: preview.map((m) {
+            final source =
+                (m['source'] ?? m['lead_source'] ?? m['leadSource'])
+                    ?.toString();
+            final leadStatus =
+                (m['lead_status'] ?? m['leadStatus'] ?? m['status'])
+                    ?.toString();
+            final created =
+                m['date_created'] ?? m['created_at'] ?? m['dateCreated'];
+            return ListTile(
+              leading: Icon(
+                Icons.person_add_alt_1_outlined,
+                color: _getDynamicColor(context),
+              ),
+              title: Text(source ?? 'Lead'),
+              subtitle: Text(
+                '${leadStatus ?? 'New'} • ${_fmtDateDynamic(created)}',
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const NewLeadsScreen())),
+            );
+          }).toList(),
         );
-      }).toList(),
+      },
     );
   }
 
   Widget _buildInteractionsList(BuildContext context) {
-    final dynamicColor = _getDynamicColor(context);
-    final interactions = [
-      {'type': 'Call', 'with': 'John Smith', 'time': '10:00 AM'},
-      {'type': 'Email', 'with': 'Jane Doe', 'time': 'Yesterday'},
-      {'type': 'Meeting', 'with': 'Team', 'time': 'Tomorrow 3 PM'},
-    ];
+    if (_loadingInteractions) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_recentInteractions.isEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(16.0),
+          child: Text('No recent interactions'),
+        ),
+      );
+    }
 
     return Column(
-      children: interactions.map((i) {
-        IconData icon;
-        switch (i['type']) {
-          case 'Call':
-            icon = Icons.phone;
-            break;
-          case 'Email':
-            icon = Icons.email;
-            break;
-          default:
-            icon = Icons.people;
-        }
+      children: _recentInteractions.map((i) {
         return Card(
           elevation: 2,
           margin: const EdgeInsets.symmetric(vertical: 4),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
           child: ListTile(
-            leading: Icon(icon, color: dynamicColor),
-            title: Text('${i['type']} with ${i['with']}'),
-            subtitle: Text('Time: ${i['time']}'),
+            leading: CircleAvatar(
+              child: Text(
+                (i['target_name'] ?? 'U')[0].toUpperCase(),
+              ),
+            ),
+            title: Text(i['target_name'] ?? 'Unknown'),
+            subtitle: Text(
+              i['description'] ?? '',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            trailing: Text(
+              i['timestamp'] != null
+                  ? _timeAgo(DateTime.parse(i['timestamp']))
+                  : '',
+            ),
           ),
         );
       }).toList(),
@@ -350,6 +471,68 @@ class _SectionHeader extends StatelessWidget {
               child: const Text('See all'),
             ),
         ],
+      ),
+    );
+  }
+}
+
+class _InlineError extends StatelessWidget {
+  const _InlineError({
+    required this.message,
+    required this.onRetry,
+  });
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final errorColor = Theme.of(context).colorScheme.error;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Error: $message',
+            style: TextStyle(color: errorColor),
+          ),
+          const SizedBox(height: 8),
+          TextButton.icon(
+            onPressed: onRetry,
+            icon: const Icon(Icons.refresh),
+            label: const Text('Retry'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EmptyCard extends StatelessWidget {
+  const _EmptyCard({
+    required this.icon,
+    required this.text,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String text;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = Theme.of(context).colorScheme.primary;
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: ListTile(
+        leading: Icon(icon, color: accent),
+        title: Text(text),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: onTap,
       ),
     );
   }
