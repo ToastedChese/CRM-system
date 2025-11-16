@@ -4,8 +4,10 @@ import 'package:powerlink_crm/screens/settings_screen.dart';
 import 'messages_screen.dart';
 import 'manage_users_screen.dart';
 import 'customer_requests_screen.dart';
+import 'add_product_screen.dart';
+import 'view_products_screen.dart';
 
-// KPI target screens (file-name imports)
+// KPI target screens
 import 'active_projects.dart';
 import 'team_performance.dart';
 import 'customer_satisfaction.dart';
@@ -23,13 +25,14 @@ class ManagerDashboard extends StatefulWidget {
 class _ManagerDashboardState extends State<ManagerDashboard> {
   int _selectedIndex = 0;
 
-  final List<Widget> _pages = const [
-    _ManagerHomePage(),
-    MessagesScreen(),
-    ManageUsersScreen(),
-    CustomerRequestsScreen(),
-    ProfileScreen(),
-    SettingsScreen(),
+  // NOTE: no "const" in front of this list
+  final List<Widget> _pages = [
+    const _ManagerHomePage(),
+    const MessagesScreen(),
+    const ManageUsersScreen(),
+    const CustomerRequestsScreen(),
+    const ProfileScreen(),
+    const SettingsScreen(),
   ];
 
   void _onItemTapped(int index) => setState(() => _selectedIndex = index);
@@ -40,13 +43,13 @@ class _ManagerDashboardState extends State<ManagerDashboard> {
       appBar: AppBar(
         title: const Text('Manager Dashboard'),
         centerTitle: true,
-        automaticallyImplyLeading: false, // Ensure no back button appears
+        automaticallyImplyLeading: false,
       ),
       body: _pages[_selectedIndex],
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _selectedIndex,
         onTap: _onItemTapped,
-        type: BottomNavigationBarType.fixed, // Ensures all labels are visible
+        type: BottomNavigationBarType.fixed,
         selectedFontSize: 12,
         unselectedFontSize: 12,
         items: const [
@@ -71,14 +74,12 @@ class _ManagerDashboardState extends State<ManagerDashboard> {
   }
 }
 
-// ------------------------ MANAGER HOME PAGE (Private Widget) ------------------------
 class _ManagerHomePage extends StatelessWidget {
   const _ManagerHomePage();
 
   Color _getDynamicColor(BuildContext context) {
     final theme = Theme.of(context);
     final isDarkMode = theme.brightness == Brightness.dark;
-    // Use a bright, readable accent color for dark mode
     return isDarkMode ? Colors.blueAccent : theme.primaryColor;
   }
 
@@ -169,7 +170,7 @@ class _ManagerHomePage extends StatelessWidget {
                   MaterialPageRoute(builder: (_) => const MeetingsScreen()),
                 ),
               ),
-               _buildKpiCard(
+              _buildKpiCard(
                 context,
                 title: 'Create Project',
                 value: 'Start a new project',
@@ -177,6 +178,26 @@ class _ManagerHomePage extends StatelessWidget {
                 color: dynamicColor,
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const ProjectCreateScreen()),
+                ),
+              ),
+              _buildKpiCard(
+                context,
+                title: 'Add Products',
+                value: 'Create a new product',
+                icon: Icons.add_shopping_cart,
+                color: dynamicColor,
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const AddProductScreen()),
+                ),
+              ),
+              _buildKpiCard(
+                context,
+                title: 'View Products',
+                value: 'See all products',
+                icon: Icons.inventory,
+                color: dynamicColor,
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const ViewProductsScreen()),
                 ),
               ),
             ],
@@ -208,15 +229,14 @@ class _ManagerHomePage extends StatelessWidget {
     );
   }
 
-  Widget _buildKpiCard(
-    BuildContext context,
-    {
-    required String title,
-    required String value,
-    required IconData icon,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
+  static Widget _buildKpiCard(
+      BuildContext context, {
+        required String title,
+        required String value,
+        required IconData icon,
+        required Color color,
+        required VoidCallback onTap,
+      }) {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
