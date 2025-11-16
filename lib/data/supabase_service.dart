@@ -34,6 +34,8 @@ class Task {
         : DateTime.tryParse(row['due_date'].toString()),
     status: (row['status'] ?? '').toString(),
   );
+
+  
 }
 
 class SupabaseService {
@@ -222,6 +224,7 @@ class SupabaseService {
     return (res as List).cast<Map<String, dynamic>>();
   }
 
+ 
   static Future<Map<String, dynamic>> createEmployee(
     Map<String, dynamic> data,
   ) async {
@@ -737,7 +740,7 @@ class SupabaseService {
   // LEADS (final: consistent naming for UI + schema)
   // ------------------------------------------------------------
 
-  /// All leads visible to the signed-in user.
+ /// All leads visible to the signed-in user.
   /// RLS should allow both employees and managers to read.
   static Future<List<Map<String, dynamic>>> visibleLeads() async {
     final res = await _db
@@ -778,8 +781,7 @@ class SupabaseService {
   }) async {
     final row = <String, dynamic>{
       if (customerId != null) 'customer_id': customerId,
-      if (assignedEmployeeId != null)
-        'assigned_employee_id': assignedEmployeeId,
+      if (assignedEmployeeId != null) 'assigned_employee_id': assignedEmployeeId,
       'source': source,
       'lead_status': leadStatus,
       'date_created': (dateCreated ?? DateTime.now().toUtc()).toIso8601String(),
@@ -800,12 +802,10 @@ class SupabaseService {
   }) async {
     final upd = <String, dynamic>{
       if (customerId != null) 'customer_id': customerId,
-      if (assignedEmployeeId != null)
-        'assigned_employee_id': assignedEmployeeId,
+      if (assignedEmployeeId != null) 'assigned_employee_id': assignedEmployeeId,
       if (source != null) 'source': source,
       if (leadStatus != null) 'lead_status': leadStatus,
-      if (dateCreated != null)
-        'date_created': dateCreated.toUtc().toIso8601String(),
+      if (dateCreated != null) 'date_created': dateCreated.toUtc().toIso8601String(),
     };
 
     final res = await _db
@@ -928,6 +928,41 @@ class SupabaseService {
     return (res as List).cast<Map<String, dynamic>>();
   }
 
+    /// Fetch assigned projects for a given employee/user
+  Future<List<Map<String, dynamic>>> getAssignedProjects({
+    required int employeeId,
+  }) async {
+    try {
+      final response = await _db
+          .from('project_assignments')
+          .select('project_id, projects(name, description, status, starts_at, due_date)')
+          .eq('assignee_user_id', employeeId);
+
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      print('Error fetching assigned projects: $e');
+      return [];
+    }
+  }
+
+  /// Fetch assigned tasks for a given employee
+  Future<List<Map<String, dynamic>>> getAssignedTasks({
+    required int employeeId,
+  }) async {
+    try {
+      final response = await _db
+          .from('tasks')
+          .select('task_id, title, description, status, due_date, project_id')
+          .eq('assigned_to', employeeId)
+          .order('due_date', ascending: true);
+
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      print('Error fetching assigned tasks: $e');
+      return [];
+    }
+  }
+
   static Future<List<Map<String, dynamic>>> activeProjectsEmployees() async {
     final res = await _db
         .from('v_active_projects_per_employee')
@@ -935,6 +970,7 @@ class SupabaseService {
         .order('display_name');
     return (res as List).cast<Map<String, dynamic>>();
   }
+  
 
   static Future<List<Map<String, dynamic>>> customersLite() async {
     final res = await _db
@@ -1040,15 +1076,35 @@ class SupabaseService {
     return res == true;
   }
 
-  static Future<List<Task>> myTasks() async {
-    final rows = await _db
-        .from('tasks')
-        .select()
-        .order('due_date', ascending: true);
-    return (rows as List)
-        .map((r) => Task.fromRow(Map<String, dynamic>.from(r as Map)))
-        .toList();
+     static SupabaseClient get _client => Supabase.instance.client;
+    static Future<List<Task>> myTasks() async {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) return [];
+
+    try {
+      final response = await _client
+          .from('project_assignments')
+          .select('project_id, projects(id, name, description, status, starts_at, due_date)')
+          .eq('assignee_user_id', userId);
+
+      final List data = response as List<dynamic>? ?? [];
+
+      return data.map((assignment) {
+        final project = assignment['projects'];
+        return Task(
+          id: project['id'],
+          title: project['name'] ?? 'Unnamed Task',
+          description: project['description'],
+          status: project['status'] ?? 'Unknown',
+          dueDate: project['due_date'] != null ? DateTime.parse(project['due_date']) : null,
+        );
+      }).toList();
+    } catch (e) {
+      print('Error fetching tasks: $e');
+      return [];
+    }
   }
+
 
   static Future<Task> createTask({
     required String title,

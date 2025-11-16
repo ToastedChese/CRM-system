@@ -92,22 +92,27 @@ class _DashboardHomePage extends StatefulWidget {
 class _DashboardHomePageState extends State<_DashboardHomePage> {
   final SupabaseService _svc = SupabaseService();
   String? _userId = Supabase.instance.client.auth.currentUser?.id;
-  int? _employeeId;
 
   List<Map<String, dynamic>> _recentInteractions = [];
+  List<Map<String, dynamic>> _newLeads = [];
+  List<Map<String, dynamic>> _assignedProjects = [];
+
   bool _loadingInteractions = true;
+  bool _loadingLeads = true;
+  bool _loadingProjects = true;
 
   Timer? _refreshTimer;
 
   @override
   void initState() {
     super.initState();
-    _initEmployee();
+    _loadAllData();
 
-    // Auto-refresh every 10 seconds
     _refreshTimer = Timer.periodic(
       const Duration(seconds: 10),
-      (_) => _loadRecentInteractions(),
+      (_) {
+        _loadAllData();
+      },
     );
   }
 
@@ -117,62 +122,98 @@ class _DashboardHomePageState extends State<_DashboardHomePage> {
     super.dispose();
   }
 
-  Future<void> _initEmployee() async {
-    final uid = _userId;
-    if (uid == null) return;
-
-    try {
-      final empResp = await Supabase.instance.client
-          .from('employees')
-          .select('employee_id, first_name')
-          .eq('auth_user_id', uid)
-          .maybeSingle();
-
-      if (empResp != null) {
-        setState(() {
-          _employeeId = empResp['employee_id'] as int?;
-        });
-
-        await _loadRecentInteractions();
-      } else {
-        setState(() {
-          _employeeId = null;
-          _loadingInteractions = false;
-        });
-      }
-    } catch (e) {
-      print('Error fetching employee: $e');
-      setState(() {
-        _loadingInteractions = false;
-      });
-    }
+  Future<void> _loadAllData() async {
+    await Future.wait([
+      _loadRecentInteractions(),
+      _loadNewLeads(),
+      _loadAssignedProjects(),
+    ]);
   }
 
   Future<void> _loadRecentInteractions() async {
-    final empId = _employeeId;
-    if (empId == null) return;
+  final uid = _userId;
+  if (uid == null) {
+    setState(() => _loadingInteractions = false);
+    return;
+  }
 
+  try {
+    // Get the employee_id for the current logged-in user
+    final empResp = await Supabase.instance.client
+        .from('employees')
+        .select('employee_id')
+        .eq('auth_user_id', uid) // use non-null uid
+        .maybeSingle();
+
+    final employeeId = empResp?['employee_id'];
+    if (employeeId == null) {
+      setState(() => _loadingInteractions = false);
+      return;
+    }
+
+    // Fetch recent interactions
+    final response = await Supabase.instance.client
+        .from('employee_recentinteractions')
+        .select('*')
+        .eq('employee_id', employeeId) // employeeId is int
+        .order('timestamp', ascending: false)
+        .limit(20);
+
+    if (mounted) {
+      setState(() {
+        _recentInteractions = List<Map<String, dynamic>>.from(response);
+        _loadingInteractions = false;
+      });
+    }
+  } catch (e) {
+    print("Error loading interactions: $e");
+    if (mounted) setState(() => _loadingInteractions = false);
+  }
+}
+
+  Future<void> _loadNewLeads() async {
     try {
       final response = await Supabase.instance.client
-          .from('employee_recentinteractions')
-          .select('*')
-          .eq('employee_id', empId)
-          .order('timestamp', ascending: false)
+          .from('customers')
+          .select('customer_id, first_name, last_name, phone, created_at')
+          .order('created_at', ascending: false)
           .limit(20);
 
       if (mounted) {
         setState(() {
-          _recentInteractions = List<Map<String, dynamic>>.from(response);
-          _loadingInteractions = false;
+          _newLeads = List<Map<String, dynamic>>.from(response);
+          _loadingLeads = false;
         });
       }
     } catch (e) {
-      print("Error loading interactions: $e");
+      print("Error loading new leads: $e");
+      if (mounted) setState(() => _loadingLeads = false);
+    }
+  }
+
+  Future<void> _loadAssignedProjects() async {
+    final uid = _userId;
+    if (uid == null) {
+      setState(() => _loadingProjects = false);
+      return;
+    }
+
+    try {
+      // Correct query for UUID filtering
+      final response = await Supabase.instance.client
+          .from('project_assignments')
+          .select('project_id, projects(id, name, description, status, starts_at, due_date)')
+          .eq('assignee_user_id', uid);
+
       if (mounted) {
         setState(() {
-          _loadingInteractions = false;
+          _assignedProjects = List<Map<String, dynamic>>.from(response);
+          _loadingProjects = false;
         });
       }
+    } catch (e) {
+      print("Error loading assigned projects: $e");
+      if (mounted) setState(() => _loadingProjects = false);
     }
   }
 
@@ -194,91 +235,12 @@ class _DashboardHomePageState extends State<_DashboardHomePage> {
     return DateFormat('MMMM d, yyyy').format(DateTime.now());
   }
 
-  Widget _buildInteractionsList(BuildContext context) {
-    if (_loadingInteractions) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    if (_recentInteractions.isEmpty) return const Text('No recent interactions');
-
-    return Column(
-      children: _recentInteractions.map((i) {
-        return Card(
-          elevation: 2,
-          margin: const EdgeInsets.symmetric(vertical: 4),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          child: ListTile(
-            leading: CircleAvatar(
-              child: Text(
-                (i['target_name'] ?? 'U')[0].toUpperCase(),
-              ),
-            ),
-            title: Text(i['target_name'] ?? 'Unknown'),
-            subtitle: Text(
-              i['description'] ?? '',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            trailing: Text(
-              i['timestamp'] != null
-                  ? _timeAgo(DateTime.parse(i['timestamp']))
-                  : '',
-            ),
-          ),
-        );
-      }).toList(),
-    );
-  }
-
   String _timeAgo(DateTime date) {
     final diff = DateTime.now().difference(date);
     if (diff.inMinutes < 1) return "now";
     if (diff.inHours < 1) return "${diff.inMinutes}m";
     if (diff.inHours < 24) return "${diff.inHours}h";
     return "${diff.inDays}d";
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final dynamicColor = _getDynamicColor(context);
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildHeader(dynamicColor),
-          const SizedBox(height: 20),
-          _SectionHeader(
-            title: 'Assigned Tasks',
-            color: dynamicColor,
-            onSeeAll: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => const TasksScreen(),
-                ),
-              );
-            },
-          ),
-          _buildTaskList(),
-          const SizedBox(height: 20),
-          _SectionHeader(
-            title: 'Customer Leads',
-            color: dynamicColor,
-            onSeeAll: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => const NewLeadsScreen(),
-                ),
-              );
-            },
-          ),
-          _buildLeadsList(dynamicColor),
-          const SizedBox(height: 20),
-          _SectionHeader(title: 'Recent Interactions', color: dynamicColor),
-          _buildInteractionsList(context),
-        ],
-      ),
-    );
   }
 
   Widget _buildHeader(Color dynamicColor) {
@@ -310,17 +272,21 @@ class _DashboardHomePageState extends State<_DashboardHomePage> {
     );
   }
 
-  Widget _buildTaskList() {
-    final tasks = [
-      {'title': 'Follow up with client #123', 'status': 'In Progress'},
-      {'title': 'Prepare proposal for new lead', 'status': 'Pending'},
-      {'title': 'Team meeting at 3 PM', 'status': 'Completed'},
-    ];
+  Widget _buildAssignedProjectsList(Color dynamicColor) {
+    if (_loadingProjects) return const Center(child: CircularProgressIndicator());
+    if (_assignedProjects.isEmpty) return const Text('No assigned tasks');
 
     return Column(
-      children: tasks.map((task) {
+      children: _assignedProjects.map((assignment) {
+        final project = assignment['projects'];
+        final startsAt = project['starts_at'] != null
+            ? DateFormat('dd/MM/yyyy').format(DateTime.parse(project['starts_at']))
+            : 'Unknown';
+        final dueDate = project['due_date'] != null
+            ? DateFormat('dd/MM/yyyy').format(DateTime.parse(project['due_date']))
+            : 'Unknown';
         Color statusColor;
-        switch (task['status']) {
+        switch (project['status']) {
           case 'Completed':
             statusColor = Colors.green;
             break;
@@ -330,16 +296,16 @@ class _DashboardHomePageState extends State<_DashboardHomePage> {
           default:
             statusColor = Colors.grey;
         }
+
         return Card(
           elevation: 2,
           margin: const EdgeInsets.symmetric(vertical: 4),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
           child: ListTile(
-            title: Text(task['title']!),
+            title: Text(project['name'] ?? 'Unnamed Task'),
+            subtitle: Text('${project['description'] ?? ''}\nStart: $startsAt • Due: $dueDate'),
             trailing: Text(
-              task['status']!,
+              project['status'] ?? 'Unknown',
               style: TextStyle(
                 color: statusColor,
                 fontWeight: FontWeight.w500,
@@ -352,28 +318,102 @@ class _DashboardHomePageState extends State<_DashboardHomePage> {
   }
 
   Widget _buildLeadsList(Color dynamicColor) {
-    final leads = [
-      {'name': 'John Smith', 'source': 'Website Form', 'status': 'New'},
-      {'name': 'Jane Doe', 'source': 'Referral', 'status': 'Contacted'},
-    ];
+    if (_loadingLeads) return const Center(child: CircularProgressIndicator());
+    if (_newLeads.isEmpty) return const Text('No new customers');
 
     return Column(
-      children: leads.map((lead) {
+      children: _newLeads.map((lead) {
+        final fullName = '${lead['first_name'] ?? ''} ${lead['last_name'] ?? ''}';
+        final createdAt = lead['created_at'] != null
+            ? DateFormat('dd/MM/yyyy').format(DateTime.parse(lead['created_at']))
+            : 'Unknown';
         return Card(
           elevation: 2,
           margin: const EdgeInsets.symmetric(vertical: 4),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
           child: ListTile(
-            leading: Icon(Icons.person, color: dynamicColor),
-            title: Text(lead['name']!),
-            subtitle: Text('Source: ${lead['source']}'),
+            leading: Icon(Icons.person_add, color: dynamicColor),
+            title: Text('New customer joined: $fullName'),
+            subtitle: Text('Phone: ${lead['phone'] ?? 'N/A'} • Joined: $createdAt'),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildInteractionsList(BuildContext context) {
+    if (_loadingInteractions) return const Center(child: CircularProgressIndicator());
+    if (_recentInteractions.isEmpty) return const Text('No recent interactions');
+
+    return Column(
+      children: _recentInteractions.map((i) {
+        return Card(
+          elevation: 2,
+          margin: const EdgeInsets.symmetric(vertical: 4),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          child: ListTile(
+            leading: CircleAvatar(
+              child: Text(
+                (i['target_name'] ?? 'U')[0].toUpperCase(),
+              ),
+            ),
+            title: Text(i['target_name'] ?? 'Unknown'),
+            subtitle: Text(
+              i['description'] ?? '',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
             trailing: Text(
-              lead['status']!,
-              style: const TextStyle(fontWeight: FontWeight.w500),
+              i['timestamp'] != null
+                  ? _timeAgo(DateTime.parse(i['timestamp']))
+                  : '',
             ),
           ),
         );
       }).toList(),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final dynamicColor = _getDynamicColor(context);
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildHeader(dynamicColor),
+          const SizedBox(height: 20),
+          _SectionHeader(
+            title: 'Assigned Tasks',
+            color: dynamicColor,
+            onSeeAll: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const TasksScreen(),
+                ),
+              );
+            },
+          ),
+          _buildAssignedProjectsList(dynamicColor),
+          const SizedBox(height: 20),
+          _SectionHeader(
+            title: 'Customer Leads',
+            color: dynamicColor,
+            onSeeAll: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const NewLeadsScreen(),
+                ),
+              );
+            },
+          ),
+          _buildLeadsList(dynamicColor),
+          const SizedBox(height: 20),
+          _SectionHeader(title: 'Recent Interactions', color: dynamicColor),
+          _buildInteractionsList(context),
+        ],
+      ),
     );
   }
 }

@@ -307,7 +307,7 @@ class PowerLinkCRM extends StatelessWidget {
             '/helpChat': (context) => const HelpChatScreen(),
             '/settings': (context) => const SettingsScreen(),
             // Routes for new screens
-            '/createTask': (context) => const CreateTaskScreen(employeeId: 0), // Placeholder employeeId
+            '/createTask': (context) => const CreateTaskScreen(employeeId: null), // Placeholder employeeId
             '/rateCompany': (context) => const CustomerRateCompanyScreen(),
             '/gamification': (context) => const GamificationScreen(),
             '/meetings': (context) => const MeetingsScreen(),

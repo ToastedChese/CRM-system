@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import '../data/supabase_service.dart' as svc;
 
 class TasksScreen extends StatefulWidget {
-  const TasksScreen({super.key});
+  final List<svc.Task>? assignedTasks; // optional tasks passed from dashboard
+
+  const TasksScreen({super.key, this.assignedTasks});
+
   @override
   State<TasksScreen> createState() => _TasksScreenState();
 }
@@ -19,8 +22,15 @@ class _TasksScreenState extends State<TasksScreen> {
   }
 
   Future<void> _load() async {
-    setState(() => _future = svc.SupabaseService.myTasks());
-    // show a FAB only for managers
+    if (widget.assignedTasks != null) {
+      // Use tasks passed from dashboard
+      _future = Future.value(widget.assignedTasks);
+    } else {
+      // Otherwise fetch from Supabase
+      _future = svc.SupabaseService.myTasks();
+    }
+
+    // Show a FAB only for managers
     final isMgr = await svc.SupabaseService.amIManager();
     if (mounted) setState(() => _amManager = isMgr);
   }
@@ -79,7 +89,7 @@ class _TasksScreenState extends State<TasksScreen> {
                 style: TextStyle(color: Colors.white),
               ),
               onPressed: () async {
-                
+                // Add new task logic here
               },
             )
           : null,
@@ -94,20 +104,21 @@ class _Error extends StatelessWidget {
   const _Error({required this.message, required this.onRetry});
   final String message;
   final VoidCallback onRetry;
+
   @override
   Widget build(BuildContext context) => Center(
-    child: Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text('Error', style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 8),
-          Text(message, textAlign: TextAlign.center),
-          const SizedBox(height: 16),
-          FilledButton(onPressed: onRetry, child: const Text('Retry')),
-        ],
-      ),
-    ),
-  );
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Error', style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 8),
+              Text(message, textAlign: TextAlign.center),
+              const SizedBox(height: 16),
+              FilledButton(onPressed: onRetry, child: const Text('Retry')),
+            ],
+          ),
+        ),
+      );
 }
