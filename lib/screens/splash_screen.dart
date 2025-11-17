@@ -1,8 +1,45 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:powerlink_crm/screens/manager_dashboard.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:powerlink_crm/screens/employee_dashboard.dart';
 import 'package:powerlink_crm/screens/customer_dashboard.dart';
+
+// --- JWT Debugging Snippet ---
+Map<String, dynamic>? decodeJwtPayload(String token) {
+  try {
+    final parts = token.split('.');
+    if (parts.length != 3) {
+      print('Invalid token format');
+      return null;
+    }
+
+    String payload = parts[1];
+    int padLength = (4 - payload.length % 4) % 4;
+    payload += '=' * padLength;
+    payload = payload.replaceAll('-', '+').replaceAll('_', '/');
+
+    final decoded = utf8.decode(base64Url.decode(payload));
+    final payloadMap = json.decode(decoded) as Map<String, dynamic>;
+    return payloadMap;
+  } catch (e) {
+    print('Failed to decode JWT payload: $e');
+    return null;
+  }
+}
+
+void printTokenPayload(String token) {
+  final payload = decodeJwtPayload(token);
+  if (payload == null) {
+    print('No payload decoded');
+    return;
+  }
+  print('JWT payload: $payload');
+
+  final role = payload['role'] ?? payload['https://hasura.io/jwt/claims']?['x-hasura-role'] ?? payload['app_metadata']?['role'];
+  print('Detected role claim: $role');
+}
+// --- End of Snippet ---
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -26,16 +63,17 @@ class _SplashScreenState extends State<SplashScreen> {
     final session = supabase.auth.currentSession;
 
     if (session == null) {
-      // No active session, go to the start screen.
       Navigator.of(context).pushReplacementNamed('/start');
       return;
     }
 
-    try {
-      // Session exists, so we have a user ID.
-      final userId = session.user.id;
+    // ---
+    // Print JWT payload for debugging
+    printTokenPayload(session.accessToken);
+    // ---
 
-      // Fast path: check role in user metadata (if present)
+    try {
+      final userId = session.user.id;
       final metaRole = (session.user.userMetadata?['role'] as String?)?.toLowerCase();
       if (metaRole != null && metaRole.isNotEmpty) {
         if (metaRole == 'manager') {
@@ -58,7 +96,6 @@ class _SplashScreenState extends State<SplashScreen> {
         }
       }
 
-      // 1) Check managers table first (managers are distinct from employees)
       final rawMgr = await supabase
           .from('managers')
           .select('id, auth_user_id, email')
@@ -71,7 +108,6 @@ class _SplashScreenState extends State<SplashScreen> {
         return;
       }
 
-      // 2) Check employees
       final rawEmp = await supabase
           .from('employees')
           .select('role, employee_id, first_name')
@@ -79,11 +115,9 @@ class _SplashScreenState extends State<SplashScreen> {
           .limit(1)
           .maybeSingle();
 
-      // If the widget got disposed in the meantime, stop.
       if (!mounted) return;
 
       if (rawEmp is Map) {
-        // Directly use the returned map for role checking.
         final map = Map<String, dynamic>.from(rawEmp as Map);
         final role = (map['role'] as String?)?.toLowerCase();
         if (role == 'manager') {
@@ -96,7 +130,6 @@ class _SplashScreenState extends State<SplashScreen> {
           );
         }
       } else {
-        // No employee record found; check customers table and route accordingly.
         final rawCust = await supabase
             .from('customers')
             .select('customer_id, email')
@@ -108,13 +141,11 @@ class _SplashScreenState extends State<SplashScreen> {
             MaterialPageRoute(builder: (context) => const CustomerDashboard()),
           );
         } else {
-          // Fallback: no profile found; go to start so user can sign in again or create profile.
           Navigator.of(context).pushReplacementNamed('/start');
         }
       }
     } catch (e) {
       print('Error during splash screen redirect: $e');
-      // On any error, fall back to the start screen for safety.
       Navigator.of(context).pushReplacementNamed('/start');
     }
   }

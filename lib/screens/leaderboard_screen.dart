@@ -1,159 +1,210 @@
-import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
+import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/gamification_service.dart';
 
 class LeaderboardScreen extends StatefulWidget {
-  const LeaderboardScreen({super.key});
-
-  // --- 1. LOCAL DATA SOURCE & HELPERS ---
-  static const String testUserId = 'local_test_user'; // A hardcoded ID for our local user
-  static List<Map<String, dynamic>>? _dummyLeaderboardData;
-
-  static void updateCurrentUserXp(int newXp) {
-    if (_dummyLeaderboardData == null) return;
-    try {
-      final currentUserData = _dummyLeaderboardData!.firstWhere((user) => user['id'] == testUserId);
-      currentUserData['xp'] = newXp;
-    } catch (e) {
-      print("Local test user not found in dummy data: $e");
-    }
-  }
-
-  static int getCurrentUserXp() {
-    if (_dummyLeaderboardData == null) return 0;
-    try {
-      return _dummyLeaderboardData!.firstWhere((user) => user['id'] == testUserId)['xp'];
-    } catch (e) {
-      return 0;
-    }
-  }
-  // --- END OF LOCAL DATA SECTION ---
+  const LeaderboardScreen({Key? key}) : super(key: key);
 
   @override
   _LeaderboardScreenState createState() => _LeaderboardScreenState();
 }
 
 class _LeaderboardScreenState extends State<LeaderboardScreen> {
+  late Future<Map<String, dynamic>> _dataFuture;
+
+  final SupabaseClient _supabase = Supabase.instance.client;
 
   @override
   void initState() {
     super.initState();
+    _dataFuture = _fetchData();
   }
 
-  Future<List<Map<String, dynamic>>> _fetchLeaderboard() async {
-    if (LeaderboardScreen._dummyLeaderboardData == null) {
-      print("--- Generating new LOCAL dummy leaderboard data. ---");
-      List<Map<String, dynamic>> generatedData = [];
+  Future<Map<String, dynamic>> _fetchData() async {
+    final userId = _supabase.auth.currentUser?.id;
+    int? currentEmployeeId;
 
-      generatedData.add({
-        'id': LeaderboardScreen.testUserId,
-        'username': 'You (Local Test)',
-        'xp': 0,
-        'avatar_url': null,
-      });
+    // Fetch leaderboard data and current user's employee_id in parallel
+    final responses = await Future.wait([
+      _supabase
+          .from('employees')
+          .select(
+              'employee_id, first_name, last_name, email, rank_points, avatar_url')
+          .order('rank_points', ascending: false)
+          .limit(100),
+      if (userId != null)
+        _supabase
+            .from('employees')
+            .select('employee_id')
+            .eq('auth_user_id', userId)
+            .single()
+    ]);
 
-      for (int i = 1; i <= 20; i++) {
-        generatedData.add({
-          'id': 'dummy_id_$i',
-          'username': 'User $i',
-          'xp': (20 - i) * 150 + 50,
-          'avatar_url': null,
-        });
-      }
-
-      LeaderboardScreen._dummyLeaderboardData = generatedData;
+    final leaderboardResponse = responses[0] as List;
+    if (responses.length > 1 && responses[1] != null) {
+       final userResponse = responses[1] as Map<String, dynamic>?;
+       currentEmployeeId = userResponse?['employee_id'];
     }
 
-    LeaderboardScreen._dummyLeaderboardData!.sort((a, b) => (b['xp'] as int).compareTo(a['xp'] as int));
-
-    await Future.delayed(const Duration(milliseconds: 50));
-    return LeaderboardScreen._dummyLeaderboardData!;
-  }
-
-  Color _getDynamicColor(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDarkMode = theme.brightness == Brightness.dark;
-    return isDarkMode ? Colors.blueAccent : theme.primaryColor;
+    return {
+      'leaderboard': List<Map<String, dynamic>>.from(leaderboardResponse),
+      'currentEmployeeId': currentEmployeeId,
+    };
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Leaderboard (Local)'),
-        backgroundColor: const Color(0xFF182D53),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () {
-              setState(() {
-                LeaderboardScreen._dummyLeaderboardData = null;
-              });
-            },
-            tooltip: 'Reset Local Data',
-          ),
-        ],
+        title: const Text('Full Leaderboard'),
+        elevation: 0,
+        backgroundColor: Colors.transparent,
       ),
-      body: FutureBuilder<List<Map<String, dynamic>>>(
-        future: _fetchLeaderboard(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snapshot.hasError || !snapshot.hasData || snapshot.data!.isEmpty) {
-            return const Center(child: Text('Could not load local data.'));
-          }
+      body: FutureBuilder<Map<String, dynamic>>(
+          future: _dataFuture,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (snapshot.hasError) {
+              return Center(child: Text('Error: ${snapshot.error}'));
+            }
+            if (!snapshot.hasData) {
+              return const Center(
+                  child: Text('No players on the leaderboard yet.'));
+            }
 
-          final employees = snapshot.data!;
+            final data = snapshot.data!;
+            final players = data['leaderboard'] as List<Map<String, dynamic>>;
+            final currentEmployeeId = data['currentEmployeeId'] as int?;
 
-          return RefreshIndicator(
-            onRefresh: () async => setState(() {}),
-            child: ListView.builder(
-              itemCount: employees.length,
-              itemBuilder: (context, index) {
-                final employee = employees[index];
-                final rank = index + 1;
-                final rankColor = _getRankColor(rank);
-                final userRank = Rank.getRank(employee['xp'] ?? 0);
-                final isCurrentUser = employee['id'] == LeaderboardScreen.testUserId;
-                final dynamicHighlightColor = _getDynamicColor(context);
+            if (players.isEmpty) {
+              return const Center(child: Text('No players on the leaderboard yet.'));
+            }
 
-                return Card(
-                  margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                  elevation: isCurrentUser ? 4 : 2,
-                  shape: RoundedRectangleBorder(
-                    side: isCurrentUser ? BorderSide(color: dynamicHighlightColor, width: 2) : BorderSide.none,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: rankColor,
-                      child: Text('$rank', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
-                    ),
-                    title: Text(
-                      employee['username'] ?? 'N/A',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: isCurrentUser ? dynamicHighlightColor : null,
-                      ),
-                    ),
-                    subtitle: Text('${userRank.name} - ${NumberFormat.compact().format(employee['xp'] ?? 0)} XP'),
-                    trailing: Text(userRank.emoji, style: const TextStyle(fontSize: 24)),
-                  ),
-                );
+            final topThree = players.take(3).toList();
+            final rest = players.skip(3).toList();
+
+            return RefreshIndicator(
+              onRefresh: () async {
+                setState(() {
+                  _dataFuture = _fetchData();
+                });
               },
-            ),
-          );
-        },
+              child: ListView(
+                children: [
+                  _buildPodium(topThree, currentEmployeeId),
+                  const SizedBox(height: 20),
+                  _buildLeaderboardList(rest, 4, currentEmployeeId),
+                ],
+              ),
+            );
+          }),
+    );
+  }
+
+  Widget _buildPodium(List<Map<String, dynamic>> topThree, int? currentEmployeeId) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 20.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          if (topThree.length > 1)
+            _buildPodiumMember(topThree[1], 2, 120, currentEmployeeId),
+          if (topThree.isNotEmpty)
+            _buildPodiumMember(topThree[0], 1, 150, currentEmployeeId),
+          if (topThree.length > 2)
+            _buildPodiumMember(topThree[2], 3, 100, currentEmployeeId),
+        ],
       ),
     );
   }
 
-  Color _getRankColor(int rank) {
-    if (rank == 1) return Colors.amber.shade700;
-    if (rank == 2) return Colors.grey.shade600;
-    if (rank == 3) return Colors.brown.shade600;
-    return Theme.of(context).primaryColor;
+  Widget _buildPodiumMember(
+      Map<String, dynamic> player, int rank, double height, int? currentEmployeeId) {
+    final userRank = Rank.getRank(player['rank_points'] ?? 0);
+    final playerName =
+        '${player['first_name'] ?? ''} ${player['last_name'] ?? ''}'.trim();
+    final bool isCurrentUser = player['employee_id'] == currentEmployeeId;
+    final displayName = (playerName.isEmpty ? 'Player' : playerName) + (isCurrentUser ? ' (You)' : '');
+
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(userRank.emoji, style: const TextStyle(fontSize: 24)),
+        const SizedBox(height: 4),
+        CircleAvatar(
+          radius: 30,
+          backgroundImage: player['avatar_url'] != null &&
+                  player['avatar_url'].isNotEmpty
+              ? NetworkImage(player['avatar_url'])
+              : null,
+          child: player['avatar_url'] == null || player['avatar_url'].isEmpty
+              ? const Icon(Icons.person, size: 30)
+              : null,
+        ),
+        const SizedBox(height: 8),
+        Text(displayName, style: const TextStyle(fontWeight: FontWeight.bold), textAlign: TextAlign.center,),
+        Text('${player['rank_points'] ?? 0} Points',
+            style: TextStyle(color: Colors.grey[600])),
+        Container(
+          height: height,
+          width: 60,
+          decoration: BoxDecoration(
+            color: rank == 1
+                ? Colors.amber
+                : rank == 2
+                    ? Colors.grey[400]
+                    : Colors.brown[300],
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(8),
+              topRight: Radius.circular(8),
+            ),
+          ),
+          child: Center(
+            child: Text(
+              '$rank',
+              style: const TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLeaderboardList(
+      List<Map<String, dynamic>> players, int startIndex, int? currentEmployeeId) {
+    return ListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: players.length,
+      itemBuilder: (context, index) {
+        final player = players[index];
+        final playerRank = Rank.getRank(player['rank_points'] ?? 0);
+        final playerName =
+            '${player['first_name'] ?? ''} ${player['last_name'] ?? ''}'.trim();
+        final bool isCurrentUser = player['employee_id'] == currentEmployeeId;
+        final displayName = (playerName.isEmpty ? 'Player' : playerName) + (isCurrentUser ? ' (you)' : '');
+
+        return ListTile(
+          leading: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text('${startIndex + index}'),
+              Text(playerRank.emoji, style: const TextStyle(fontSize: 18)),
+            ],
+          ),
+          title: Text(displayName),
+          subtitle: Text(playerRank.name),
+          trailing: Text('${player['rank_points'] ?? 0} Points'),
+        );
+      },
+    );
   }
 }

@@ -259,6 +259,12 @@ class ChatService {
       'body': body,
       if (attachments != null) 'attachments': attachments,
     };
+
+    // Safe debug: only log presence of auth methods (never print tokens/secrets)
+    final hasAuth = _db.auth.currentSession?.accessToken != null && _db.auth.currentSession!.accessToken!.isNotEmpty;
+    final hasTrigger = false; // set true if you add x-trigger-secret in your HTTP headers elsewhere
+    print('DEBUG: sendMessage — Authorization present: $hasAuth, x-trigger-secret present: $hasTrigger');
+
     final res = await _db
         .from('messages')
         .insert(row)

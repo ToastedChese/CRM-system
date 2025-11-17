@@ -1,307 +1,231 @@
-import 'dart:convert';
-import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:http/http.dart' as http;
-import 'package:speech_to_text/speech_to_text.dart' as stt;
-import 'package:avatar_glow/avatar_glow.dart';
+import 'package:speech_to_text/speech_to_text.dart';
+import 'package:powerlink_crm/data/supabase_service.dart';
+import 'package:powerlink_crm/screens/saved_summaries_screen.dart';
 
-class VoiceAiScreen extends StatefulWidget {
-  const VoiceAiScreen({super.key});
+class VoiceAIScreen extends StatefulWidget {
+  const VoiceAIScreen({Key? key}) : super(key: key);
 
   @override
-  _VoiceAiScreenState createState() => _VoiceAiScreenState();
+  State<VoiceAIScreen> createState() => _VoiceAIScreenState();
 }
 
-class _VoiceAiScreenState extends State<VoiceAiScreen> {
-  // State variables for Speech-to-Text
-  final TextEditingController _textController =
-      TextEditingController(text: 'Press the button and start speaking');
-  late stt.SpeechToText _speech;
+class _VoiceAIScreenState extends State<VoiceAIScreen> {
+  final SpeechToText _speechToText = SpeechToText();
+  bool _speechEnabled = false;
   bool _isListening = false;
-  double _confidence = 1.0;
 
+  final TextEditingController _transcriptController = TextEditingController();
   final TextEditingController _contextController = TextEditingController();
 
-  // State variables for Summarization
-  bool _isSummarizing = false;
-  String _summary = '';
+  // Holds the transcript from before the current listening session started.
+  String _currentTranscript = '';
 
   @override
   void initState() {
     super.initState();
-    _speech = stt.SpeechToText();
+    _initSpeech();
   }
 
   @override
   void dispose() {
-    _textController.dispose();
+    // Clean up controllers
+    _transcriptController.dispose();
     _contextController.dispose();
     super.dispose();
   }
 
-  /// Resets the entire screen to its initial state.
-  void _resetScreen() {
-    if (_speech.isListening) {
-      _speech.stop();
+  void _initSpeech() async {
+    _speechEnabled = await _speechToText.initialize();
+    if (mounted) {
+      setState(() {});
     }
-    setState(() {
-      _textController.text = 'Press the button and start speaking';
-      _contextController.clear();
-      _summary = '';
-      _isListening = false;
-      _isSummarizing = false;
-    });
+  }
+
+  void _startListening() async {
+    // Save the state of the transcript before starting a new listening session.
+    _currentTranscript = _transcriptController.text;
+    if (_currentTranscript.isNotEmpty && !_currentTranscript.endsWith(' ')) {
+      _currentTranscript += ' ';
+    }
+
+    await _speechToText.listen(
+      onResult: (result) {
+        if (mounted) {
+          // Append the newly recognized words to the transcript from when we started.
+          _transcriptController.text = _currentTranscript + result.recognizedWords;
+        }
+      },
+    );
+    if (mounted) {
+      setState(() {
+        _isListening = true;
+      });
+    }
+  }
+
+  void _pauseListening() async {
+    await _speechToText.stop();
+    if (mounted) {
+      setState(() {
+        _isListening = false;
+      });
+    }
+  }
+
+  void _toggleRecording() {
+    if (!_speechEnabled) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Speech recognition is not available or not enabled.')),
+      );
+      return;
+    }
+    _isListening ? _pauseListening() : _startListening();
+  }
+
+  void _clearAll() {
+    if (_isListening) {
+      _pauseListening();
+    }
+    _transcriptController.clear();
+    _contextController.clear();
+  }
+
+  void _saveRecording() async {
+    if (_isListening) {
+      _pauseListening();
+    }
+
+    final transcript = _transcriptController.text;
+    final contextText = _contextController.text;
+
+    if (transcript.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Cannot save an empty transcript.')),
+      );
+      return;
+    }
+
+    // Generate a title automatically based on the current date and time.
+    final now = DateTime.now();
+    final date = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    final time = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+    final String saveName = 'Recording $date at $time';
+
+    // Show loading indicator
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      await SupabaseService.createAiSummary(
+        title: saveName, // Pass the auto-generated title
+        transcript: transcript,
+        context: contextText,
+        summary: "Summary has not been generated yet.",
+      );
+
+      if (!mounted) return;
+      Navigator.of(context).pop(); // Dismiss loading indicator
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Recording saved!'), backgroundColor: Colors.green),
+      );
+
+      _clearAll();
+
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.of(context).pop(); // Dismiss loading indicator
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Save failed: ${e.toString()}'), backgroundColor: Colors.red),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(24.0, 24.0, 24.0, 120.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    "Transcribed Text",
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.refresh),
-                    tooltip: 'Reset Screen',
-                    onPressed: _resetScreen,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _textController,
-                readOnly: true,
-                maxLines: null,
-                style: const TextStyle(fontSize: 22.0),
-                decoration: InputDecoration(
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8.0),
-                  ),
-                  filled: true,
-                ),
-              ),
-              const SizedBox(height: 24),
-              Text(
-                "Context (Optional)",
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _contextController,
-                maxLines: 3,
-                style: const TextStyle(fontSize: 16.0),
-                decoration: InputDecoration(
-                  hintText: 'e.g., "Summarize this for a sales meeting about project X"',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8.0),
-                  ),
-                  filled: true,
-                ),
-              ),
-              const SizedBox(height: 24),
-              const Divider(),
-              const SizedBox(height: 24),
-              Text(
-                "AI Summary",
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              _buildSummaryWidget(),
-            ],
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Voice Note'),
+        actions: <Widget>[
+          IconButton(
+            icon: const Icon(Icons.history),
+            tooltip: 'View Saved Recordings',
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (context) => const SavedSummariesScreen()),
+              );
+            },
           ),
-        ),
-        Align(
-          alignment: Alignment.bottomCenter,
-          child: Padding(
-            padding: const EdgeInsets.only(bottom: 20.0),
-            child: ClipOval(
-              child: BackdropFilter(
-                filter: ui.ImageFilter.blur(sigmaX: 5.0, sigmaY: 5.0),
-                child: AvatarGlow(
-                  animate: _isListening,
-                  glowColor: Theme.of(context).primaryColor,
-                  duration: const Duration(milliseconds: 2000),
-                  repeat: true,
-                  child: FloatingActionButton(
-                    onPressed: _listen,
-                    backgroundColor: Colors.transparent,
-                    elevation: 0,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: RadialGradient(
-                          colors: _isListening
-                              ? [Colors.red.withOpacity(0.7), Colors.red.withOpacity(0.4)]
-                              : [
-                                  Theme.of(context).primaryColor.withOpacity(0.7),
-                                  Theme.of(context).primaryColor.withOpacity(0.4)
-                                ],
-                          stops: const [0.7, 1.0],
-                        ),
-                      ),
-                      child: Center(
-                        child: Icon(_isListening ? Icons.mic : Icons.mic_none, color: Colors.white),
-                      ),
-                    ),
-                  ),
+        ],
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: <Widget>[
+            TextField(
+              controller: _contextController,
+              decoration: const InputDecoration(
+                labelText: 'Context (Optional)',
+                hintText: 'e.g., meeting title, product names...',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Expanded(
+              child: TextField(
+                controller: _transcriptController,
+                maxLines: null,
+                expands: true,
+                textAlignVertical: TextAlignVertical.top,
+                decoration: InputDecoration(
+                  labelText: 'Transcript',
+                  hintText: _isListening ? 'Listening...' : 'Press the mic to start recording.',
+                  border: const OutlineInputBorder(),
                 ),
               ),
             ),
-          ),
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                FloatingActionButton.large(
+                  onPressed: _toggleRecording,
+                  tooltip: _isListening ? 'Pause' : 'Record',
+                  child: Icon(_isListening ? Icons.pause : Icons.mic),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.clear_all),
+                  label: const Text('New/Clear'),
+                  onPressed: _clearAll,
+                  style: ElevatedButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    backgroundColor: Colors.orange.shade700,
+                  ),
+                ),
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.save),
+                  label: const Text('Save'),
+                  onPressed: _saveRecording,
+                  style: ElevatedButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    backgroundColor: Colors.green.shade600,
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
-      ],
-    );
-  }
-
-  Widget _buildSummaryWidget() {
-    final theme = Theme.of(context);
-    if (_isSummarizing) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    if (_summary.isEmpty) {
-      return Text(
-        'Summary will appear here after you stop speaking.',
-        style: TextStyle(color: theme.hintColor, fontSize: 16),
-      );
-    }
-    bool isError = _summary.startsWith("Error:");
-    return Card(
-      elevation: 1,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8),
-        side: isError
-            ? BorderSide(color: theme.colorScheme.error.withOpacity(0.5))
-            : BorderSide.none,
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(12.0),
-        child: Text(
-          _summary,
-          style: TextStyle(
-            fontSize: 16,
-            color: isError ? theme.colorScheme.error : null,
-          ),
-        ),
       ),
     );
-  }
-
-  void _listen() async {
-    if (!_isListening) {
-      bool available = await _speech.initialize(
-        onStatus: (val) => print('onStatus: $val'),
-        onError: (val) => print('onError: $val'),
-      );
-      if (available) {
-        _textController.clear(); // Always clear for a new session
-        setState(() {
-          _isListening = true;
-          _summary = '';
-        });
-        _speech.listen(
-          listenFor: const Duration(minutes: 30),
-          pauseFor: const Duration(minutes: 5),
-          onResult: (val) {
-            if (mounted) {
-              setState(() {
-                _textController.text = val.recognizedWords;
-                if (val.hasConfidenceRating && val.confidence > 0) {
-                  _confidence = val.confidence;
-                }
-              });
-            }
-          },
-        );
-      }
-    } else {
-      setState(() => _isListening = false);
-      await _speech.stop();
-      if (_textController.text.isNotEmpty) {
-        _summarizeText(
-          textToSummarize: _textController.text,
-          context: _contextController.text,
-        );
-      }
-    }
-  }
-
-  Future<void> _summarizeText(
-      {required String textToSummarize, String? context}) async {
-    setState(() {
-      _isSummarizing = true;
-    });
-
-    const String apiUrl =
-        "https://api-inference.huggingface.co/models/facebook/bart-large-cnn";
-    final String? apiKey = dotenv.env['HUGGING_FACE_API_TOKEN'];
-
-    if (apiKey == null || apiKey.isEmpty) {
-      setState(() {
-        _summary =
-            "Error: Hugging Face API token is missing. Please check your .env file.";
-        _isSummarizing = false;
-      });
-      return;
-    }
-
-    String inputText = textToSummarize;
-    if (context != null && context.isNotEmpty) {
-      inputText =
-          "Context: $context. \n\nSummarize the following text: $textToSummarize";
-    }
-
-    try {
-      final response = await http.post(
-        Uri.parse(apiUrl),
-        headers: {
-          "Authorization": "Bearer $apiKey",
-          "Content-Type": "application/json",
-        },
-        body: json.encode({
-          "inputs": inputText,
-          "parameters": {
-            "min_length": 30,
-            "max_length": 150,
-          }
-        }),
-      );
-
-      if (response.statusCode == 200) {
-        final List<dynamic> responseData = json.decode(response.body);
-        if (responseData.isNotEmpty &&
-            responseData[0].containsKey('summary_text')) {
-          setState(() {
-            _summary = responseData[0]['summary_text'];
-          });
-        } else {
-          setState(
-              () => _summary = "Error: Received an invalid response from the API.");
-        }
-      } else {
-        setState(() {
-          _summary =
-              "Error: Failed to get summary (Status code: ${response.statusCode})\n${response.body}";
-        });
-      }
-    } catch (e) {
-      setState(() {
-        _summary =
-            "Error: Could not connect to the Hugging Face API. Check your internet connection.\n$e";
-      });
-    } finally {
-      setState(() {
-        _isSummarizing = false;
-      });
-    }
   }
 }

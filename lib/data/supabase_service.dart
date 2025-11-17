@@ -928,6 +928,41 @@ class SupabaseService {
     return (res as List).cast<Map<String, dynamic>>();
   }
 
+    /// Fetch assigned projects for a given employee/user
+  Future<List<Map<String, dynamic>>> getAssignedProjects({
+    required int employeeId,
+  }) async {
+    try {
+      final response = await _db
+          .from('project_assignments')
+          .select('project_id, projects(name, description, status, starts_at, due_date)')
+          .eq('assignee_user_id', employeeId);
+
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      print('Error fetching assigned projects: $e');
+      return [];
+    }
+  }
+
+  /// Fetch assigned tasks for a given employee
+  Future<List<Map<String, dynamic>>> getAssignedTasks({
+    required int employeeId,
+  }) async {
+    try {
+      final response = await _db
+          .from('tasks')
+          .select('task_id, title, description, status, due_date, project_id')
+          .eq('assigned_to', employeeId)
+          .order('due_date', ascending: true);
+
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      print('Error fetching assigned tasks: $e');
+      return [];
+    }
+  }
+
   static Future<List<Map<String, dynamic>>> activeProjectsEmployees() async {
     final res = await _db
         .from('v_active_projects_per_employee')
@@ -1040,14 +1075,33 @@ class SupabaseService {
     return res == true;
   }
 
-  static Future<List<Task>> myTasks() async {
-    final rows = await _db
-        .from('tasks')
-        .select()
-        .order('due_date', ascending: true);
-    return (rows as List)
-        .map((r) => Task.fromRow(Map<String, dynamic>.from(r as Map)))
-        .toList();
+     static SupabaseClient get _client => Supabase.instance.client;
+    static Future<List<Task>> myTasks() async {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) return [];
+
+    try {
+      final response = await _client
+          .from('project_assignments')
+          .select('project_id, projects(id, name, description, status, starts_at, due_date)')
+          .eq('assignee_user_id', userId);
+
+      final List data = response as List<dynamic>? ?? [];
+
+      return data.map((assignment) {
+        final project = assignment['projects'];
+        return Task(
+          id: project['id'],
+          title: project['name'] ?? 'Unnamed Task',
+          description: project['description'],
+          status: project['status'] ?? 'Unknown',
+          dueDate: project['due_date'] != null ? DateTime.parse(project['due_date']) : null,
+        );
+      }).toList();
+    } catch (e) {
+      print('Error fetching tasks: $e');
+      return [];
+    }
   }
 
   static Future<Task> createTask({
@@ -1322,4 +1376,80 @@ class SupabaseService {
         .single();
     return Map<String, dynamic>.from(row as Map);
   }
+
+  // ------------------------------------------------------------
+  // AI SUMMARIES
+  // ------------------------------------------------------------
+
+  /// Creates a new AI summary record linked to the currently logged-in user.
+  static Future<Map<String, dynamic>> createAiSummary({
+    required String title,
+    String? transcript,
+    String? context,
+    required String summary,
+  }) async {
+    final userId = _db.auth.currentUser?.id;
+    if (userId == null) {
+      throw Exception('User is not logged in. Cannot save summary.');
+    }
+
+    final row = {
+      'employee_id': userId,
+      'title': title,
+      'transcript': transcript,
+      'context': context,
+      'ai_summary': summary,
+    };
+
+    final res = await _db
+        .from('ai_summaries')
+        .insert(row)
+        .select()
+        .single();
+
+    return Map<String, dynamic>.from(res as Map);
+  }
+
+  /// Fetches all summaries created by the currently logged-in employee.
+  static Future<List<Map<String, dynamic>>> getMyAiSummaries() async {
+    final userId = _db.auth.currentUser?.id;
+    if (userId == null) {
+      // Return an empty list if no user is logged in
+      return [];
+    }
+
+    final res = await _db
+        .from('ai_summaries')
+        .select('id, transcript, context, ai_summary, created_at')
+        .eq('employee_id', userId)
+        .order('created_at', ascending: false);
+
+    return (res as List).cast<Map<String, dynamic>>();
+  }
+
+
+  /// Updates an existing AI summary, typically after a regeneration.
+  static Future<void> updateAiSummary({
+    required int summaryId,
+    required String newSummary,
+  }) async {
+    // FINAL, CORRECT FIX: Await the filter builder directly.
+    // This executes the command without asking for the updated row back,
+    // which avoids the "return=representation" header and the 406 error.
+    await _db
+        .from('ai_summaries')
+        .update({'ai_summary': newSummary})
+        .eq('id', summaryId);
+  }
+
+  /// Deletes an AI summary record by its unique ID.
+  static Future<void> deleteAiSummary({
+    required int summaryId,
+  }) async {
+    await _db
+        .from('ai_summaries')
+        .delete()
+        .eq('id', summaryId);
+  }
+
 }
