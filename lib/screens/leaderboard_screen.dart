@@ -58,8 +58,6 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Full Leaderboard'),
-        elevation: 0,
-        backgroundColor: Colors.transparent,
       ),
       body: FutureBuilder<Map<String, dynamic>>(
           future: _dataFuture,

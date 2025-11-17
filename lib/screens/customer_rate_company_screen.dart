@@ -94,6 +94,7 @@ class _CustomerRateCompanyScreenState extends State<CustomerRateCompanyScreen> {
             FilledButton(
               style: FilledButton.styleFrom(
                 backgroundColor: mainBlue,
+                foregroundColor: Colors.white, // This ensures the text color is white
                 padding: const EdgeInsets.symmetric(vertical: 14),
               ),
               onPressed: _submitting ? null : _submit,
